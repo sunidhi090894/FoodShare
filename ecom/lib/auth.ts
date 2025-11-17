@@ -1,5 +1,8 @@
+// ecom/lib/auth.ts
+
 import { getCollection } from './mongodb'
 import crypto from 'crypto'
+import { ObjectId } from 'mongodb' // Ensure ObjectId is imported for the new logic
 
 const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000 // 7 days
 
@@ -24,11 +27,51 @@ export async function registerUser(email: string, password: string, role: string
     createdAt: new Date(),
     updatedAt: new Date(),
     active: true,
-    verified: false
+    verified: false,
+    authMethod: 'email_password' // <--- ADDED authMethod
   })
 
   return { id: result.insertedId, email, name, role }
 }
+
+// --- NEW EXPORTED FUNCTION ---
+export async function registerOrLoginSocialUser(email: string, name: string, role: string, firebaseId: string) {
+  const users = await getCollection('users')
+
+  let user = await users.findOne({ email })
+
+  if (user) {
+    // If user exists, link Firebase ID if not already linked
+    if (user.authMethod !== 'google' || user.firebaseId !== firebaseId) {
+      await users.updateOne(
+        { _id: user._id },
+        { $set: { authMethod: 'google', firebaseId, updatedAt: new Date() } }
+      )
+      user = await users.findOne({ _id: user._id })
+    }
+  } else {
+    // If user doesn't exist, register them as a Google user
+    const result = await users.insertOne({
+      email,
+      name,
+      role, 
+      firebaseId,
+      authMethod: 'google', // <--- ADDED authMethod
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      active: true,
+      verified: false
+    })
+    user = await users.findOne({ _id: result.insertedId })
+  }
+
+  if (!user) {
+     throw new Error('Failed to retrieve user data after social login.')
+  }
+
+  return { id: user._id, email: user.email, name: user.name, role: user.role }
+}
+// --- END NEW EXPORTED FUNCTION ---
 
 export async function loginUser(email: string, password: string) {
   const users = await getCollection('users')
@@ -37,6 +80,12 @@ export async function loginUser(email: string, password: string) {
   if (!user) {
     throw new Error('Invalid credentials')
   }
+
+  // <--- MODIFIED TO CHECK FOR AUTH METHOD
+  if (user.authMethod === 'google') {
+    throw new Error('This account is registered via Google. Please use Google Sign-In.')
+  }
+  // END MODIFICATION --->
 
   const hashedPassword = hashPassword(password)
   if (user.password !== hashedPassword) {
@@ -48,6 +97,6 @@ export async function loginUser(email: string, password: string) {
 
 export async function getUserById(id: string) {
   const users = await getCollection('users')
-  const { ObjectId } = await import('mongodb')
+  // Use the imported ObjectId
   return await users.findOne({ _id: new ObjectId(id) })
 }
