@@ -11,7 +11,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Leaf className="w-8 h-8 text-primary" />
-            <span className="font-bold text-xl text-foreground">FoodShare</span>
+            <span className="font-bold text-xl text-foreground">AaharSetu</span>
           </div>
           <div className="flex items-center gap-4">
             <Link href="/login" className="text-foreground/70 hover:text-foreground transition">Sign In</Link>
@@ -35,7 +35,7 @@ export default function LandingPage() {
           </div>
           {/* Buttons removed per request */}
           <div className="pt-8">
-            <img src="/food-donation-logistics-network.jpg" alt="FoodShare Network" className="rounded-lg border border-border shadow-lg" />
+            <img src="/food-donation-logistics-network.jpg" alt="AaharSetu Network" className="rounded-lg border border-border shadow-lg" />
           </div>
         </div>
       </section>
@@ -47,7 +47,7 @@ export default function LandingPage() {
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <Leaf className="w-6 h-6 text-primary" />
-                <span className="font-bold text-foreground">FoodShare</span>
+                <span className="font-bold text-foreground">AaharSetu</span>
               </div>
               <p className="text-foreground/70 text-sm">Reducing food waste, one connection at a time.</p>
             </div>
@@ -77,7 +77,7 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-border pt-8 text-center text-sm text-foreground/70">
-            <p>&copy; 2025 FoodShare. All rights reserved.</p>
+            <p>&copy; 2025 AaharSetu. All rights reserved.</p>
           </div>
         </div>
       </footer>
