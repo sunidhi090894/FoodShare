@@ -1,46 +1,33 @@
-import { getCollection } from '@/lib/mongodb'
 import { NextRequest, NextResponse } from 'next/server'
-import { ObjectId } from 'mongodb'
+import { withAuth } from '@/lib/server-auth'
+import { createOrganizationForUser, type OrganizationPayload } from '@/lib/organizations'
+import { getUserDocumentByFirebaseUid } from '@/lib/users'
 
-export async function POST(request: NextRequest) {
+export const dynamic = 'force-dynamic'
+
+export const POST = withAuth(async (req: NextRequest, _ctx, authUser) => {
   try {
-    const userId = request.cookies.get('userId')?.value
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const body = (await req.json()) as OrganizationPayload
+    const user = await getUserDocumentByFirebaseUid(authUser.uid)
 
-    const org = await request.json()
-    const organizations = await getCollection('organizations')
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    }
 
-    const result = await organizations.insertOne({
-      userId: new ObjectId(userId),
-      name: org.name,
-      type: org.type,
-      address: org.address,
-      phone: org.phone,
-      latitude: org.latitude,
-      longitude: org.longitude,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      verified: false,
-      capacity: org.capacity || 0,
-      activeOffers: 0
-    })
-
-    return NextResponse.json({ id: result.insertedId, ...org }, { status: 201 })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    const organization = await createOrganizationForUser(user, body)
+    return NextResponse.json(organization, { status: 201 })
+  } catch (error) {
+    const isSyntaxError = error instanceof SyntaxError
+    const status = isSyntaxError ? 400 : 500
+    const message = isSyntaxError
+      ? 'Invalid JSON payload'
+      : error instanceof Error
+        ? error.message
+        : 'Unable to create organization'
+    return NextResponse.json({ error: message }, { status })
   }
-}
+})
 
-export async function GET(request: NextRequest) {
-  try {
-    const userId = request.cookies.get('userId')?.value
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-
-    const organizations = await getCollection('organizations')
-    const orgs = await organizations.find({ userId: new ObjectId(userId) }).toArray()
-
-    return NextResponse.json(orgs)
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+export async function GET() {
+  return NextResponse.json({ error: 'Use /api/organizations/mine for listing' }, { status: 405 })
 }

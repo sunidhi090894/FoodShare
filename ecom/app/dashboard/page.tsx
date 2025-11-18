@@ -1,128 +1,148 @@
 'use client'
 
-import { useState } from 'react'
-import Link from 'next/link'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
+import { Leaf, LogOut, ChevronRight, AlertCircle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Leaf, LogOut, Menu, X, Home, Plus, BarChart3, Users, MapPin, Settings } from 'lucide-react'
+import { LineChart, Line, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { NotificationBell } from '@/components/notifications/notification-bell'
+import { requiresOrganizationCompletion } from '@/lib/auth-redirect'
+
+interface BackendUser {
+  _id: string
+  email: string
+  name: string
+  role: 'DONOR' | 'RECIPIENT' | 'VOLUNTEER' | 'ADMIN'
+  organizationId?: string
+}
 
 export default function DashboardPage() {
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [userRole] = useState('donor')
+  const router = useRouter()
+  const [backendUser, setBackendUser] = useState<BackendUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [error, setError] = useState('')
 
-  const menuItems = [
-    { icon: Home, label: 'Overview', href: '#' },
-    { icon: Plus, label: 'Post Surplus', href: '#' },
-    { icon: MapPin, label: 'Active Matches', href: '#' },
-    { icon: BarChart3, label: 'Analytics', href: '#' },
-    { icon: Users, label: 'Network', href: '#' },
-    { icon: Settings, label: 'Settings', href: '#' }
-  ]
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const res = await fetch('/api/users/me')
+        if (!res.ok) {
+          router.replace('/login')
+          return
+        }
+        const user = await res.json()
+        setBackendUser(user)
+
+        if (requiresOrganizationCompletion(user)) {
+          router.replace('/onboarding/organization')
+        }
+      } catch (err) {
+        console.error('Failed to fetch user:', err)
+        router.replace('/login')
+      } finally {
+        setAuthLoading(false)
+      }
+    }
+
+    fetchUser()
+  }, [router])
+
+  const handleSignOut = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+      router.replace('/login')
+    } catch (err) {
+      console.error('Sign out failed:', err)
+      setError('Failed to sign out')
+    }
+  }
+
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-foreground/70">Loading...</p>
+      </div>
+    )
+  }
+
+  if (!backendUser) {
+    return null
+  }
 
   return (
-    <div className="min-h-screen bg-background flex">
-      {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'w-64' : 'w-0'} bg-card border-r border-border transition-all duration-300 overflow-hidden`}>
-        <div className="h-full flex flex-col p-4">
-          <div className="flex items-center gap-2 mb-8">
+    <div className="min-h-screen bg-background">
+      {/* Navigation */}
+      <nav className="border-b border-border bg-background/95 backdrop-blur">
+        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <Leaf className="w-6 h-6 text-primary" />
             <span className="font-bold text-lg text-foreground">FoodShare</span>
           </div>
-          <nav className="flex-1 space-y-2">
-            {menuItems.map(item => {
-              const Icon = item.icon
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  className="flex items-center gap-3 px-4 py-2 rounded-lg text-foreground/70 hover:bg-muted hover:text-foreground transition"
-                >
-                  <Icon className="w-5 h-5" />
-                  <span>{item.label}</span>
-                </Link>
-              )
-            })}
-          </nav>
-          <Button variant="outline" className="w-full justify-start text-destructive hover:text-destructive hover:bg-destructive/10">
-            <LogOut className="w-4 h-4 mr-2" />
-            Sign Out
-          </Button>
+          <div className="flex items-center gap-4">
+            <NotificationBell />
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <p className="font-medium text-foreground">{backendUser.name}</p>
+                <span className="text-sm text-foreground/70">{backendUser.email}</span>
+              </div>
+              <Button variant="ghost" size="icon" onClick={handleSignOut} title="Sign out">
+                <LogOut className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
+      </nav>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <header className="border-b border-border bg-card px-6 py-4 flex items-center justify-between">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="text-foreground/70 hover:text-foreground"
-          >
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-foreground/70">john@restaurant.com</span>
+      <main className="max-w-7xl mx-auto px-4 py-8">
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700">{error}</p>
           </div>
-        </header>
+        )}
 
-        {/* Dashboard Content */}
-        <main className="flex-1 overflow-auto p-6">
-          <div className="max-w-7xl space-y-6">
-            {/* Welcome */}
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Welcome to FoodShare</h1>
-              <p className="text-foreground/70">Manage your surplus food, track impact, and connect with the community</p>
-            </div>
+        <div className="space-y-6">
+          <div>
+            <h1 className="text-4xl font-bold text-foreground">
+              Welcome back{backendUser.name ? `, ${backendUser.name.split(' ')[0]}` : ''}!
+            </h1>
+            <p className="text-foreground/70 mt-2">Here's what's happening with your food sharing activity</p>
+          </div>
 
-            {/* Quick Stats */}
-            <div className="grid md:grid-cols-4 gap-4">
-              {[
-                { label: 'Surplus Posted', value: '12', unit: 'items' },
-                { label: 'Matches', value: '8', unit: 'active' },
-                { label: 'Meals Shared', value: '240', unit: 'servings' },
-                { label: 'Carbon Saved', value: '48', unit: 'kg CO2' }
-              ].map((stat, idx) => (
-                <Card key={idx} className="p-4 border border-border">
-                  <p className="text-foreground/70 text-sm mb-1">{stat.label}</p>
-                  <div className="flex items-baseline gap-2">
-                    <span className="text-2xl font-bold text-primary">{stat.value}</span>
-                    <span className="text-foreground/60 text-sm">{stat.unit}</span>
-                  </div>
-                </Card>
-              ))}
-            </div>
+          {/* Quick Actions */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {backendUser.role === 'DONOR' && (
+              <Card className="p-6 border border-border cursor-pointer hover:shadow-lg transition" onClick={() => router.push('/donor/surplus/new')}>
+                <p className="font-semibold text-foreground mb-2">List Surplus Food</p>
+                <p className="text-sm text-foreground/70">Share excess food from your organization</p>
+                <ChevronRight className="w-5 h-5 text-primary mt-4" />
+              </Card>
+            )}
 
-            {/* Recent Activity */}
-            <Card className="p-6 border border-border">
-              <h2 className="text-xl font-bold text-foreground mb-4">Recent Activity</h2>
-              <div className="space-y-4">
-                {[
-                  { type: 'match', text: 'Matched with Community Kitchen - 20 servings', time: '2 hours ago' },
-                  { type: 'posted', text: 'Posted fresh vegetables - 15 lbs available', time: '4 hours ago' },
-                  { type: 'delivery', text: 'Pickup completed by volunteer James', time: '1 day ago' }
-                ].map((activity, idx) => (
-                  <div key={idx} className="flex items-center justify-between pb-4 border-b border-border last:border-0 last:pb-0">
-                    <p className="text-foreground/80">{activity.text}</p>
-                    <span className="text-xs text-foreground/60">{activity.time}</span>
-                  </div>
-                ))}
-              </div>
+            <Card className="p-6 border border-border cursor-pointer hover:shadow-lg transition" onClick={() => router.push('/donor')}>
+              <p className="font-semibold text-foreground mb-2">View Activity</p>
+              <p className="text-sm text-foreground/70">See your recent donations and impact</p>
+              <ChevronRight className="w-5 h-5 text-primary mt-4" />
             </Card>
 
-            {/* Quick Actions */}
-            <div className="grid md:grid-cols-2 gap-4">
-              <Button className="h-16 text-base">
-                <Plus className="w-5 h-5 mr-2" />
-                Post New Surplus
-              </Button>
-              <Button variant="outline" className="h-16 text-base">
-                <BarChart3 className="w-5 h-5 mr-2" />
-                View Full Analytics
-              </Button>
-            </div>
+            <Card className="p-6 border border-border cursor-pointer hover:shadow-lg transition" onClick={() => router.push('/volunteer/tasks')}>
+              <p className="font-semibold text-foreground mb-2">Browse Opportunities</p>
+              <p className="text-sm text-foreground/70">Find ways to help in your community</p>
+              <ChevronRight className="w-5 h-5 text-primary mt-4" />
+            </Card>
           </div>
-        </main>
-      </div>
+
+          {/* Chart Placeholder */}
+          <Card className="p-6 border border-border">
+            <h2 className="text-xl font-semibold text-foreground mb-4">Activity Overview</h2>
+            <div className="w-full h-64 bg-muted/50 rounded-lg flex items-center justify-center">
+              <p className="text-foreground/50">Chart will be displayed here</p>
+            </div>
+          </Card>
+        </div>
+      </main>
     </div>
   )
 }

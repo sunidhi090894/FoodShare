@@ -1,18 +1,17 @@
-// ecom/app/login/page.tsx
-
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Leaf, Mail, Lock, AlertCircle, Chrome } from 'lucide-react' // Chrome for Google Sign-in
-import { signInWithGoogle, isFirebaseConfigured } from '@/lib/firebase' // Import the Firebase sign-in helper and config flag
+import { Leaf, Mail, Lock, AlertCircle } from 'lucide-react'
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const justRegistered = searchParams?.get('welcome') === '1'
   const [formData, setFormData] = useState({ email: '', password: '' })
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -23,29 +22,6 @@ export default function LoginPage() {
       [e.target.name]: e.target.value
     }))
   }
-
-  // --- NEW: Google Sign-In Handler ---
-  const handleGoogleSignIn = async () => {
-    setIsLoading(true)
-    setError('')
-    try {
-      // Default role to 'donor' for sign-up, or use the existing user's role if logging in.
-      const user = await signInWithGoogle('donor') 
-      
-      const routes: { [key: string]: string } = {
-        donor: '/donor',
-        recipient: '/recipient',
-        volunteer: '/volunteer',
-        admin: '/admin'
-      }
-      
-      router.push(routes[user.role] || '/dashboard') 
-    } catch (err: any) {
-      setError(err.message || 'Google Sign-in failed.')
-      setIsLoading(false)
-    }
-  }
-  // --- END NEW FUNCTION ---
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,23 +44,26 @@ export default function LoginPage() {
 
       const user = await res.json()
       
-      // Route to appropriate dashboard based on role
-      const routes: { [key: string]: string } = {
-        donor: '/donor',
-        recipient: '/recipient',
-        volunteer: '/volunteer',
-        admin: '/admin'
+      // Route to appropriate page based on role from database
+      if (user.role === 'donor' || user.role === 'DONOR') {
+        router.push('/donor')
+      } else if (user.role === 'recipient' || user.role === 'RECIPIENT') {
+        router.push('/recipient')
+      } else if (user.role === 'volunteer' || user.role === 'VOLUNTEER') {
+        router.push('/volunteer')
+      } else if (user.role === 'admin' || user.role === 'ADMIN') {
+        router.push('/admin')
+      } else {
+        router.push('/dashboard')
       }
-      
-      router.push(routes[user.role] || '/dashboard')
     } catch (err) {
+      console.error('Email login failed', err)
       setError('An error occurred. Please try again.')
       setIsLoading(false)
     }
   }
 
   return (
-    // FIX: Replaced 'bg-gradient-to-b' with 'bg-linear-to-b'
     <div className="min-h-screen bg-linear-to-b from-background to-muted/50 flex flex-col">
       <nav className="border-b border-border bg-background/95 backdrop-blur px-4 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -106,42 +85,14 @@ export default function LoginPage() {
           </div>
 
           <Card className="p-6 border border-border">
-            {/* NEW: Google Sign-In Button (only when Firebase is configured) */}
-            {isFirebaseConfigured ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleGoogleSignIn}
-                className="w-full mb-6"
-                disabled={isLoading}
-              >
-                <Chrome className="w-5 h-5 mr-2" />
-                Sign in with Google
-              </Button>
-            ) : (
-              <Button type="button" variant="outline" className="w-full mb-6" disabled>
-                <Chrome className="w-5 h-5 mr-2" />
-                Google sign-in unavailable
-              </Button>
+            {justRegistered && (
+              <div className="mb-4 p-4 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-800">
+                Account created successfully! Please sign in to continue.
+              </div>
             )}
-            {/* END NEW BUTTON */}
-            
-            {/* Horizontal Divider */}
-            <div className="relative mb-6">
-              <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                <div className="w-full border-t border-border" />
-              </div>
-              <div className="relative flex justify-center">
-                <span className="bg-card px-2 text-sm text-foreground/70">
-                  Or continue with email
-                </span>
-              </div>
-            </div>
-
             {error && (
               <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                {/* FIX: Replaced 'flex-shrink-0' with 'shrink-0' */}
-                <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" /> 
+                <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
                 <p className="text-sm text-red-700">{error}</p>
               </div>
             )}

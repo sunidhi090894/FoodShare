@@ -45,7 +45,6 @@
     "crypto": "1.0.1",
     "date-fns": "4.1.0",
     "embla-carousel-react": "8.5.1",
-    "firebase": "^10.14.1",
     "input-otp": "1.4.1",
     "lucide-react": "^0.454.0",
     "mongodb": "7.0.0",

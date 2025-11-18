@@ -3,6 +3,7 @@
 import { getCollection } from './mongodb'
 import crypto from 'crypto'
 import { ObjectId } from 'mongodb' // Ensure ObjectId is imported for the new logic
+import { coerceUserRole } from './users'
 
 const SESSION_DURATION = 7 * 24 * 60 * 60 * 1000 // 7 days
 
@@ -19,11 +20,12 @@ export async function registerUser(email: string, password: string, role: string
   }
 
   const hashedPassword = hashPassword(password)
+  const normalizedRole = coerceUserRole(role, 'DONOR') ?? 'DONOR'
   const result = await users.insertOne({
     email,
     password: hashedPassword,
     name,
-    role,
+    role: normalizedRole,
     createdAt: new Date(),
     updatedAt: new Date(),
     active: true,
@@ -37,6 +39,7 @@ export async function registerUser(email: string, password: string, role: string
 // --- NEW EXPORTED FUNCTION ---
 export async function registerOrLoginSocialUser(email: string, name: string, role: string, firebaseId: string) {
   const users = await getCollection('users')
+  const normalizedRole = coerceUserRole(role, 'DONOR') ?? 'DONOR'
 
   let user = await users.findOne({ email })
 
@@ -45,7 +48,7 @@ export async function registerOrLoginSocialUser(email: string, name: string, rol
     if (user.authMethod !== 'google' || user.firebaseId !== firebaseId) {
       await users.updateOne(
         { _id: user._id },
-        { $set: { authMethod: 'google', firebaseId, updatedAt: new Date() } }
+        { $set: { authMethod: 'google', firebaseId, updatedAt: new Date(), role: user.role || normalizedRole } }
       )
       user = await users.findOne({ _id: user._id })
     }
@@ -54,7 +57,7 @@ export async function registerOrLoginSocialUser(email: string, name: string, rol
     const result = await users.insertOne({
       email,
       name,
-      role, 
+      role: normalizedRole, 
       firebaseId,
       authMethod: 'google', // <--- ADDED authMethod
       createdAt: new Date(),

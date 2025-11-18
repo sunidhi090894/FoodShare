@@ -1,63 +1,51 @@
-import { getCollection } from '@/lib/mongodb'
-import { NextRequest, NextResponse } from 'next/server'
-import { ObjectId } from 'mongodb'
+import { NextResponse } from 'next/server'
+import { withAuth } from '@/lib/server-auth'
+import { createSurplusOffer, type SurplusOfferInput } from '@/lib/surplus-offers'
+import { getOrganizationById } from '@/lib/organizations'
+import { getUserDocumentByFirebaseUid } from '@/lib/users'
 
-export async function POST(request: NextRequest) {
+export const dynamic = 'force-dynamic'
+
+export const POST = withAuth(async (req, _ctx, authUser) => {
   try {
-    const userId = request.cookies.get('userId')?.value
-    if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const user = await getUserDocumentByFirebaseUid(authUser.uid)
 
-    const surplus = await request.json()
-    const surplusCol = await getCollection('surplus_offers')
-
-    const result = await surplusCol.insertOne({
-      organizationId: new ObjectId(surplus.organizationId),
-      userId: new ObjectId(userId),
-      itemType: surplus.itemType,
-      quantity: surplus.quantity,
-      unit: surplus.unit,
-      description: surplus.description,
-      expiryTime: new Date(surplus.expiryTime),
-      pickupLocation: surplus.pickupLocation,
-      latitude: surplus.latitude,
-      longitude: surplus.longitude,
-      status: 'available',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-      images: surplus.images || [],
-      allergens: surplus.allergens || [],
-      dietary: surplus.dietary || []
-    })
-
-    return NextResponse.json({ id: result.insertedId, ...surplus }, { status: 201 })
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-}
-
-export async function GET(request: NextRequest) {
-  try {
-    const status = request.nextUrl.searchParams.get('status') || 'available'
-    const radius = request.nextUrl.searchParams.get('radius') || '5'
-    const latitude = request.nextUrl.searchParams.get('latitude')
-    const longitude = request.nextUrl.searchParams.get('longitude')
-
-    const surplusCol = await getCollection('surplus_offers')
-    let query: any = { status }
-
-    if (latitude && longitude) {
-      query.$near = {
-        $geometry: {
-          type: 'Point',
-          coordinates: [parseFloat(longitude), parseFloat(latitude)]
-        },
-        $maxDistance: parseFloat(radius) * 1000
-      }
+    if (!user) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    const surplus = await surplusCol.find(query).toArray()
-    return NextResponse.json(surplus)
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    if (!user.organizationId) {
+      return NextResponse.json({ error: 'Organization is required before creating surplus offers' }, { status: 400 })
+    }
+
+    let payload: SurplusOfferInput
+    try {
+      payload = await req.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 })
+    }
+
+    const organization =
+      (payload.organizationId && (await getOrganizationById(payload.organizationId))) ||
+      (await getOrganizationById(user.organizationId))
+
+    if (!organization) {
+      return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+    }
+
+    const offer = await createSurplusOffer(user, organization, {
+      ...payload,
+      pickupAddress: payload.pickupAddress || organization.address,
+    })
+
+    return NextResponse.json(offer, { status: 201 })
+  } catch (error) {
+    console.error('Error creating surplus offer', error)
+    const message = error instanceof Error ? error.message : 'Unable to create offer'
+    return NextResponse.json({ error: message }, { status: 500 })
   }
+})
+
+export async function GET() {
+  return NextResponse.json({ error: 'Use /api/surplus/my or /api/surplus/open' }, { status: 405 })
 }

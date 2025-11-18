@@ -7,7 +7,7 @@ import SignupForm from './signup-form'
 
 export default function SignupPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-b from-background to-muted/50 flex flex-col">
+    <div className="min-h-screen bg-linear-to-b from-background to-muted/50 flex flex-col">
       <nav className="border-b border-border bg-background/95 backdrop-blur px-4 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-70 transition">

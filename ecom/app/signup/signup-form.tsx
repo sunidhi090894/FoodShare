@@ -22,6 +22,26 @@ export default function SignupForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
+  const getRouteForRole = (userRole?: string | null, isNewSignup = false) => {
+    const normalized = userRole?.toLowerCase()
+    if (normalized === 'donor' && isNewSignup) {
+      return '/donor/organization'
+    }
+
+    switch (normalized) {
+      case 'donor':
+        return '/donor'
+      case 'recipient':
+        return '/recipient'
+      case 'volunteer':
+        return '/volunteer'
+      case 'admin':
+        return '/admin'
+      default:
+        return '/dashboard'
+    }
+  }
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData(prev => ({
       ...prev,
@@ -51,34 +71,24 @@ export default function SignupForm() {
         return
       }
 
-      const user = await res.json()
-
-      if (role === 'donor') {
-        router.push('/donor/organization')
-      } else {
-        const routes: { [key: string]: string } = {
-          recipient: '/recipient',
-          volunteer: '/volunteer',
-          admin: '/admin'
-        }
-        router.push(routes[role] || '/dashboard')
-      }
+      await res.json()
+      router.push('/login?welcome=1')
     } catch (err) {
       setError('An error occurred. Please try again.')
       setIsLoading(false)
     }
   }
-
   return (
     <>
       {/* Role Selection */}
       <div className="space-y-3">
         <p className="text-sm font-medium text-foreground">I'm a:</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           {[
             { id: 'donor', label: 'Donor', icon: Building2 },
             { id: 'recipient', label: 'Recipient', icon: User },
-            { id: 'volunteer', label: 'Volunteer', icon: User }
+            { id: 'volunteer', label: 'Volunteer', icon: User },
+            { id: 'admin', label: 'Admin', icon: User }
           ].map(r => {
             const Icon = r.icon
             return (
@@ -103,7 +113,7 @@ export default function SignupForm() {
       <Card className="p-6 border border-border">
         {error && (
           <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
             <p className="text-sm text-red-700">{error}</p>
           </div>
         )}

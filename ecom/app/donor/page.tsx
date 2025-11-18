@@ -1,282 +1,646 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { Button } from '@/components/ui/button'
+import { useEffect, useMemo, useState } from 'react'
+import type { LucideIcon } from 'lucide-react'
+import {
+  Leaf,
+  Package,
+  Utensils,
+  Recycle,
+  CheckCircle2,
+  ClipboardList,
+  MapPin,
+  AlertCircle,
+  Building2,
+  Download,
+  Info,
+} from 'lucide-react'
+import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
-import { Plus, MapPin, Clock, Users, TrendingUp, LogOut, Menu, X } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 
-interface Organization {
-  _id: string
-  name: string
-  type: string
-  address: string
-  activeOffers: number
+type OfferStatus = 'OPEN' | 'MATCHED' | 'FULFILLED' | 'EXPIRED' | 'CANCELLED'
+type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
+
+interface BackendUser {
+  name: string | null
+  organization?: string | null
+  email?: string | null
 }
 
-interface SurplusOffer {
-  _id: string
-  itemType: string
-  quantity: number
-  unit: string
-  description: string
-  status: string
-  expiryTime: string
-  pickupLocation: string
+interface ActiveOffer {
+  id: string
+  summary: string
+  pickupWindow: string
+  status: OfferStatus
+  requestCount: number
+  expiresLabel: string
+  location: string
+  storage: string
+  isToday: boolean
+  pickupProbability: number
 }
 
-export default function DonorPortal() {
-  const [organizations, setOrganizations] = useState<Organization[]>([])
-  const [surplusOffers, setSurplusOffers] = useState<SurplusOffer[]>([])
-  const [selectedOrg, setSelectedOrg] = useState<string>('')
-  const [showNewOffer, setShowNewOffer] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [formData, setFormData] = useState({
-    itemType: '',
-    quantity: '',
-    unit: 'kg',
-    description: '',
-    expiryTime: ''
-  })
+interface RequestCard {
+  id: string
+  offerId: string
+  offerSummary: string
+  recipient: string
+  status: RequestStatus
+  distance: string
+  city: string
+  volunteer?: string | null
+  notes?: string
+}
+
+interface DonationRecord {
+  id: string
+  date: string
+  items: string
+  recipient: string
+  meals: number
+  co2Saved: number
+}
+
+const initialOffers: ActiveOffer[] = [
+  {
+    id: 'FS-4821',
+    summary: 'Biryani (30 plates)',
+    pickupWindow: 'Today · 2:00 – 4:00 PM',
+    status: 'OPEN',
+    requestCount: 3,
+    expiresLabel: 'Expires in 4 hours',
+    location: 'Bandra West · Mumbai',
+    storage: 'Hot meals · insulated pickup required',
+    isToday: true,
+    pickupProbability: 0.87,
+  },
+  {
+    id: 'FS-4818',
+    summary: 'Bakery box (18 assorted pastries)',
+    pickupWindow: 'Today · 7:30 – 9:00 PM',
+    status: 'MATCHED',
+    requestCount: 1,
+    expiresLabel: 'Volunteer pickup scheduled 7:30 PM',
+    location: 'Lower Parel · Mumbai',
+    storage: 'Room temp · store flat',
+    isToday: true,
+    pickupProbability: 0.62,
+  },
+  {
+    id: 'FS-4790',
+    summary: 'Cut fruit (12 kg, chilled)',
+    pickupWindow: 'Tomorrow · 10:00 – 11:30 AM',
+    status: 'FULFILLED',
+    requestCount: 4,
+    expiresLabel: 'Fulfilled yesterday • 28 meals',
+    location: 'BKC · Mumbai',
+    storage: 'Cold chain · refrigerated',
+    isToday: false,
+    pickupProbability: 0.32,
+  },
+]
+
+const initialRequests: RequestCard[] = [
+  {
+    id: 'REQ-901',
+    offerId: 'FS-4821',
+    offerSummary: 'Biryani (30 plates)',
+    recipient: 'Hope Kitchen',
+    status: 'PENDING',
+    distance: '2.4 km',
+    city: 'Bandra East',
+    volunteer: null,
+    notes: 'Can pick up before 3 PM',
+  },
+  {
+    id: 'REQ-877',
+    offerId: 'FS-4821',
+    offerSummary: 'Biryani (30 plates)',
+    recipient: 'Seva Meals Collective',
+    status: 'APPROVED',
+    distance: '4.1 km',
+    city: 'Mahim',
+    volunteer: 'Rahul - +91 90000 11122',
+    notes: 'Volunteer confirmed 2:30 PM pickup',
+  },
+  {
+    id: 'REQ-812',
+    offerId: 'FS-4818',
+    offerSummary: 'Bakery box (18 assorted pastries)',
+    recipient: 'Night Shelter Network',
+    status: 'PENDING',
+    distance: '6.3 km',
+    city: 'Worli',
+    volunteer: null,
+    notes: 'Prefers pickup slot 8:45 PM',
+  },
+]
+
+const donationHistory: DonationRecord[] = [
+  {
+    id: 'H-1201',
+    date: 'Oct 7',
+    items: 'Veg thali trays (45 meals)',
+    recipient: 'Shelter One',
+    meals: 45,
+    co2Saved: 130,
+  },
+  {
+    id: 'H-1194',
+    date: 'Oct 3',
+    items: 'Salad bowls (28 meals)',
+    recipient: 'Care Foundation',
+    meals: 28,
+    co2Saved: 75,
+  },
+  {
+    id: 'H-1186',
+    date: 'Sep 29',
+    items: 'Bread & soup (60 meals)',
+    recipient: 'Community Kitchens',
+    meals: 60,
+    co2Saved: 185,
+  },
+]
+
+const offerStatusVariant: Record<OfferStatus, 'default' | 'success' | 'secondary' | 'warning' | 'destructive'> = {
+  OPEN: 'default',
+  MATCHED: 'secondary',
+  FULFILLED: 'success',
+  EXPIRED: 'warning',
+  CANCELLED: 'destructive',
+}
+
+const requestStatusVariant: Record<RequestStatus, 'default' | 'success' | 'secondary' | 'destructive'> = {
+  PENDING: 'secondary',
+  APPROVED: 'success',
+  REJECTED: 'destructive',
+  CANCELLED: 'default',
+}
+
+const probabilityVariant = (value: number): { label: string; variant: 'success' | 'warning' | 'destructive'; warning?: string } => {
+  if (value >= 0.75) {
+    return { label: `High (${Math.round(value * 100)}%)`, variant: 'success' }
+  }
+  if (value >= 0.5) {
+    return { label: `Medium (${Math.round(value * 100)}%)`, variant: 'warning' }
+  }
+  return { label: `Low (${Math.round(value * 100)}%)`, variant: 'destructive', warning: 'Low predicted pickup chance — try extending pickup window or posting earlier.' }
+}
+
+export default function DonorPage() {
+  useProtectedRoute('DONOR')
+  const [user, setUser] = useState<BackendUser | null>(null)
+  const [fetchError, setFetchError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [offers, setOffers] = useState(initialOffers)
+  const [requests, setRequests] = useState(initialRequests)
+  const [suggestionApplied, setSuggestionApplied] = useState(false)
+
+  const forecast = {
+    range: '18 – 24 kg',
+    window: '9:00 – 11:00 PM',
+    confidence: 0.82,
+    description: 'Based on your past 30 days, day-of-week trends, and upcoming city events.',
+  }
+
+  const smartSuggestion = {
+    windowStart: '9:00 PM',
+    windowEnd: '10:30 PM',
+    quantity: '≈20 kg cooked food',
+    categories: ['Rice', 'Dal', 'Biryani'],
+  }
+
+  const donorInsights = [
+    {
+      title: 'Top surplus categories',
+      detail: 'Bread • Rice • Curry',
+    },
+    {
+      title: 'Most waste day',
+      detail: 'Saturday nights spike by 18%',
+    },
+    {
+      title: 'Pickup success rate',
+      detail: '82% (highest in your area cluster)',
+    },
+    {
+      title: 'Pattern cluster',
+      detail: 'Late-night restaurant donors (9–11 PM surpluses)',
+    },
+  ]
 
   useEffect(() => {
-    fetchOrganizations()
-    fetchOffers()
+    const loadProfile = async () => {
+      try {
+        const res = await fetch('/api/users/me')
+        if (!res.ok) {
+          throw new Error('Unable to load your profile.')
+        }
+        const data = await res.json()
+        setUser(data)
+      } catch (error) {
+        setFetchError(error instanceof Error ? error.message : 'Failed to load profile.')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadProfile()
   }, [])
 
-  const fetchOrganizations = async () => {
-    try {
-      const res = await fetch('/api/organizations')
-      if (res.ok) {
-        const data = await res.json()
-        setOrganizations(data)
-        if (data.length > 0) setSelectedOrg(data[0]._id)
+  const todayOffers = offers.filter((offer) => offer.isToday).length
+  const openOffers = offers.filter((offer) => offer.status === 'OPEN').length
+  const mealsThisMonth = donationHistory.reduce((total, record) => total + record.meals, 0)
+  const co2SavedThisMonth = donationHistory.reduce((total, record) => total + record.co2Saved, 0)
+
+  const summaryCards: { label: string; value: string; helper: string; icon: LucideIcon }[] = [
+    {
+      label: 'Today’s Surplus Posted',
+      value: todayOffers.toString(),
+      helper: `${openOffers} active pickup ${openOffers === 1 ? 'window' : 'windows'}`,
+      icon: Package,
+    },
+    {
+      label: 'Meals Donated This Month',
+      value: mealsThisMonth.toLocaleString(),
+      helper: '+120 vs last month',
+      icon: Utensils,
+    },
+    {
+      label: 'CO₂ Saved This Month',
+      value: `${co2SavedThisMonth.toLocaleString()} kg`,
+      helper: 'FoodShare conversion factor',
+      icon: Recycle,
+    },
+    {
+      label: 'Total Pickups Completed',
+      value: donationHistory.length.toString(),
+      helper: 'Confirmed in last 30 days',
+      icon: CheckCircle2,
+    },
+  ]
+
+  const requestsGrouped = useMemo(() => {
+    return requests.reduce<Record<string, { offerSummary: string; rows: RequestCard[] }>>((acc, request) => {
+      if (!acc[request.offerId]) {
+        acc[request.offerId] = { offerSummary: request.offerSummary, rows: [] }
       }
-    } catch (error) {
-      console.log('[v0] Error fetching organizations:', error)
-    }
+      acc[request.offerId].rows.push(request)
+      return acc
+    }, {})
+  }, [requests])
+
+  const handleRequestAction = (requestId: string, status: RequestStatus) => {
+    setRequests((prev) =>
+      prev.map((request) => (request.id === requestId ? { ...request, status } : request))
+    )
   }
 
-  const fetchOffers = async () => {
-    try {
-      const res = await fetch('/api/surplus')
-      if (res.ok) {
-        const data = await res.json()
-        setSurplusOffers(data)
-      }
-    } catch (error) {
-      console.log('[v0] Error fetching offers:', error)
-    }
+  const handleCancelOffer = (offerId: string) => {
+    setOffers((prev) => prev.map((offer) => (offer.id === offerId ? { ...offer, status: 'CANCELLED' } : offer)))
   }
 
-  const handleSubmitOffer = async (e: React.FormEvent) => {
-    e.preventDefault()
-    try {
-      const res = await fetch('/api/surplus', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          organizationId: selectedOrg,
-          ...formData,
-          pickupLocation: 'Organization Address',
-          latitude: 40.7128,
-          longitude: -74.0060
-        })
-      })
-      if (res.ok) {
-        setFormData({ itemType: '', quantity: '', unit: 'kg', description: '', expiryTime: '' })
-        setShowNewOffer(false)
-        fetchOffers()
-      }
-    } catch (error) {
-      console.log('[v0] Error submitting offer:', error)
-    }
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-muted-foreground">Loading donor dashboard...</p>
+      </div>
+    )
   }
 
   return (
-    <div className="flex min-h-screen bg-background">
-      {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-0'} transition-all duration-300 border-r border-border bg-muted/30 fixed h-screen overflow-y-auto`}>
-        <div className="p-6">
-          <h2 className="font-bold text-lg mb-8">Donor Portal</h2>
-          <nav className="space-y-4">
-            <a href="#" className="flex items-center gap-3 text-foreground hover:text-primary font-medium">
-              <Plus className="w-4 h-4" /> New Offer
-            </a>
-            <a href="#" className="flex items-center gap-3 text-foreground/70 hover:text-foreground">
-              <MapPin className="w-4 h-4" /> My Locations
-            </a>
-            <a href="#" className="flex items-center gap-3 text-foreground/70 hover:text-foreground">
-              <Users className="w-4 h-4" /> Matches
-            </a>
-            <a href="#" className="flex items-center gap-3 text-foreground/70 hover:text-foreground">
-              <TrendingUp className="w-4 h-4" /> Impact
-            </a>
-          </nav>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <div className={`flex-1 ${sidebarOpen ? 'ml-64' : ''} transition-all duration-300`}>
-        <header className="border-b border-border bg-background p-6 flex items-center justify-between">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 hover:bg-muted rounded">
-            {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-          <h1 className="text-2xl font-bold">Surplus Management</h1>
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="flex items-center gap-2">
-              <LogOut className="w-4 h-4" /> Sign Out
-            </Button>
-          </Link>
+    <div className="min-h-screen bg-[#f7f1e3] py-10 px-4">
+      <div className="max-w-7xl mx-auto space-y-8">
+        <header className="space-y-3">
+          <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Donor Dashboard</p>
+          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3 text-[#4a1f1f]">
+            <Leaf className="w-8 h-8 text-[#8c3b3c]" />
+            Post surplus quickly{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
+          </h1>
+          <p className="text-[#6b4d3c] max-w-3xl">
+            Manage every offer, approve recipient requests, and keep a pulse on your impact.
+          </p>
         </header>
 
-        <main className="p-8 max-w-7xl">
-          {/* Stats */}
-          <div className="grid md:grid-cols-3 gap-6 mb-12">
-            <Card className="p-6 border border-border">
-              <p className="text-foreground/70 mb-2">Active Offers</p>
-              <p className="text-4xl font-bold text-primary">{surplusOffers.filter(o => o.status === 'available').length}</p>
-            </Card>
-            <Card className="p-6 border border-border">
-              <p className="text-foreground/70 mb-2">Matched</p>
-              <p className="text-4xl font-bold text-accent">{surplusOffers.filter(o => o.status === 'matched').length}</p>
-            </Card>
-            <Card className="p-6 border border-border">
-              <p className="text-foreground/70 mb-2">Completed</p>
-              <p className="text-4xl font-bold text-primary">{surplusOffers.filter(o => o.status === 'completed').length}</p>
-            </Card>
-          </div>
-
-          {/* Organization Selection */}
-          <div className="mb-8">
-            <h2 className="text-xl font-bold mb-4">Select Organization</h2>
-            <div className="flex gap-4 flex-wrap">
-              {organizations.map(org => (
-                <Button
-                  key={org._id}
-                  onClick={() => setSelectedOrg(org._id)}
-                  variant={selectedOrg === org._id ? 'default' : 'outline'}
-                >
-                  {org.name}
-                </Button>
-              ))}
-              <Link href="/donor/organization">
-                <Button variant="outline" className="border-dashed">
-                  <Plus className="w-4 h-4 mr-2" /> Add Organization
-                </Button>
-              </Link>
+        <Card className="p-6 border border-[#d9c7aa] bg-white/80 shadow-sm">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">Surplus forecast</p>
+              <h2 className="text-2xl font-semibold text-[#4a1f1f]">
+                Predicted surplus today: {forecast.range}
+              </h2>
+              <p className="text-sm text-[#6b4d3c]">
+                Expect peak between {forecast.window}. Confidence {Math.round(forecast.confidence * 100)}%.
+              </p>
+            </div>
+            <div className="text-sm text-[#6b4d3c] max-w-md">
+              {forecast.description}
+              <div className="mt-2 flex items-center gap-2 text-xs text-[#8c3b3c]">
+                <Info className="w-4 h-4" />
+                Based on past 30 days + weekday patterns + events.
+              </div>
             </div>
           </div>
+        </Card>
 
-          {/* New Offer Form */}
-          {showNewOffer && (
-            <Card className="p-8 mb-8 border border-border">
-              <h3 className="text-xl font-bold mb-6">Post New Surplus Offer</h3>
-              <form onSubmit={handleSubmitOffer} className="space-y-6">
-                <div className="grid md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Item Type</label>
-                    <Input
-                      value={formData.itemType}
-                      onChange={(e) => setFormData({...formData, itemType: e.target.value})}
-                      placeholder="e.g., Fresh Vegetables"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Quantity</label>
-                    <div className="flex gap-2">
-                      <Input
-                        type="number"
-                        value={formData.quantity}
-                        onChange={(e) => setFormData({...formData, quantity: e.target.value})}
-                        placeholder="0"
-                        required
-                      />
-                      <select className="px-3 py-2 border border-border rounded bg-background">
-                        <option>kg</option>
-                        <option>lbs</option>
-                        <option>units</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Description</label>
-                  <textarea
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                    placeholder="Details about the food..."
-                    className="w-full border border-border rounded px-3 py-2 bg-background"
-                    rows={4}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Expiry Time</label>
-                  <Input
-                    type="datetime-local"
-                    value={formData.expiryTime}
-                    onChange={(e) => setFormData({...formData, expiryTime: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="flex gap-4">
-                  <Button type="submit" className="w-full">Post Offer</Button>
-                  <Button type="button" variant="outline" onClick={() => setShowNewOffer(false)}>Cancel</Button>
-                </div>
-              </form>
-            </Card>
-          )}
+        {fetchError && (
+          <Card className="p-4 border border-red-200 bg-red-50 flex items-center gap-3 text-sm text-red-700">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span>{fetchError}</span>
+          </Card>
+        )}
 
-          {!showNewOffer && (
-            <Button onClick={() => setShowNewOffer(true)} size="lg" className="mb-8 w-full">
-              <Plus className="w-4 h-4 mr-2" /> Post New Surplus Offer
-            </Button>
-          )}
-
-          {/* Offers List */}
-          <h2 className="text-xl font-bold mb-6">Your Surplus Offers</h2>
-          <div className="grid gap-6">
-            {surplusOffers.length === 0 ? (
-              <Card className="p-12 text-center border border-border">
-                <p className="text-foreground/70 mb-4">No surplus offers yet</p>
-                <Button onClick={() => setShowNewOffer(true)}>Create Your First Offer</Button>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {summaryCards.map((card) => {
+            const Icon = card.icon
+            return (
+              <Card key={card.label} className="p-5 border border-[#d9c7aa] bg-white flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-[#6b4d3c]">{card.label}</p>
+                  <span className="p-2 rounded-full bg-[#f0d8c0] text-[#8c3b3c]">
+                    <Icon className="w-4 h-4" />
+                  </span>
+                </div>
+                <p className="text-3xl font-semibold text-[#4a1f1f]">{card.value}</p>
+                <p className="text-sm text-[#6b4d3c]">{card.helper}</p>
               </Card>
-            ) : (
-              surplusOffers.map(offer => (
-                <Card key={offer._id} className="p-6 border border-border hover:shadow-lg transition">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <h3 className="font-bold text-lg text-foreground">{offer.itemType}</h3>
-                      <p className="text-foreground/70 mb-3">{offer.quantity} {offer.unit}</p>
-                      <p className="text-sm text-foreground/60 mb-4">{offer.description}</p>
-                      <div className="flex gap-6 text-sm text-foreground/70">
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-4 h-4" />
-                          {new Date(offer.expiryTime).toLocaleString()}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-4 h-4" />
-                          {offer.pickupLocation}
-                        </div>
+            )
+          })}
+        </div>
+
+        <Card className="p-6 border border-[#d9c7aa] bg-white flex flex-wrap items-center gap-4 justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-[#4a1f1f]">Primary Actions</h2>
+            <p className="text-sm text-[#6b4d3c]">Post surplus or review your pipeline.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button className="bg-[#8c3b3c] hover:bg-[#732f30]">Create Surplus Offer</Button>
+            <Button variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
+              View All Surplus
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="p-5 border border-dashed border-[#d9c7aa] bg-[#fdf8f0] space-y-3">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-[#4a1f1f]">Smart suggestion ready</h3>
+              <p className="text-sm text-[#6b4d3c]">
+                We anticipate {smartSuggestion.quantity} between {smartSuggestion.windowStart} and {smartSuggestion.windowEnd}. Common
+                categories: {smartSuggestion.categories.join(', ')}.
+              </p>
+            </div>
+            <Button
+              disabled={suggestionApplied}
+              className="bg-[#8c3b3c] hover:bg-[#732f30] disabled:opacity-60"
+              onClick={() => setSuggestionApplied(true)}
+            >
+              {suggestionApplied ? 'Suggestion Applied' : 'Apply Suggestion'}
+            </Button>
+          </div>
+        </Card>
+
+        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-[#4a1f1f]">Active Surplus Offers</h2>
+              <p className="text-sm text-[#6b4d3c]">Track pickup windows, requests, and statuses.</p>
+            </div>
+            <Button variant="ghost" className="text-[#8c3b3c] px-0" size="sm">
+              Refresh list
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-[#6b4d3c]">
+                <tr>
+                  <th className="py-3 font-medium">Item summary</th>
+                  <th className="py-3 font-medium">Pickup window</th>
+                  <th className="py-3 font-medium">Status</th>
+                  <th className="py-3 font-medium">Pickup likelihood</th>
+                  <th className="py-3 font-medium text-center">Requests</th>
+                  <th className="py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#f0e3d1]">
+                {offers.map((offer) => (
+                  <tr key={offer.id} className="align-top">
+                    <td className="py-4">
+                      <p className="font-semibold text-[#4a1f1f]">{offer.summary}</p>
+                      <p className="text-xs text-[#6b4d3c] flex items-center gap-1 mt-1">
+                        <MapPin className="w-3 h-3" />
+                        {offer.location}
+                      </p>
+                      <p className="text-xs text-[#6b4d3c] mt-1">{offer.storage}</p>
+                    </td>
+                    <td className="py-4 text-[#6b4d3c]">{offer.pickupWindow}</td>
+                    <td className="py-4">
+                      <div className="flex flex-col gap-1">
+                        <Badge variant={offerStatusVariant[offer.status]}>{offer.status}</Badge>
+                        <span className="text-xs text-[#6b4d3c]">{offer.expiresLabel}</span>
+                      </div>
+                    </td>
+                    <td className="py-4">
+                      {(() => {
+                        const view = probabilityVariant(offer.pickupProbability)
+                        return (
+                          <div className="space-y-1 max-w-[160px]">
+                            <Badge variant={view.variant}>{view.label}</Badge>
+                            {view.warning && (
+                              <p className="text-[11px] text-[#8c3b3c] flex items-start gap-1">
+                                <Info className="w-3 h-3 mt-0.5" />
+                                {view.warning}
+                              </p>
+                            )}
+                          </div>
+                        )
+                      })()}
+                    </td>
+                    <td className="py-4 text-center">
+                      <span className="font-semibold">{offer.requestCount}</span>
+                    </td>
+                    <td className="py-4">
+                      <div className="flex flex-wrap gap-2">
+                        <Button variant="ghost" size="sm" className="text-[#8c3b3c]">
+                          View Requests
+                        </Button>
+                        <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
+                          Edit
+                        </Button>
+                        {offer.status === 'OPEN' && (
+                          <Button variant="destructive" size="sm" onClick={() => handleCancelOffer(offer.id)}>
+                            Cancel Offer
+                          </Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-[#4a1f1f]">Requests Management</h2>
+              <p className="text-sm text-[#6b4d3c]">
+                Approve recipients, share pickup details, and flag volunteer needs.
+              </p>
+            </div>
+            <ClipboardList className="w-6 h-6 text-[#8c3b3c]" />
+          </div>
+          <div className="space-y-5">
+            {Object.entries(requestsGrouped).map(([offerId, group]) => (
+              <div key={offerId} className="rounded-xl border border-[#f0e3d1] bg-[#fffdf9] p-5 space-y-4">
+                <div className="flex flex-col gap-1">
+                  <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Offer {offerId}</p>
+                  <h3 className="text-lg font-semibold text-[#4a1f1f]">{group.offerSummary}</h3>
+                </div>
+                <div className="space-y-3">
+                  {group.rows.map((request) => (
+                    <div
+                      key={request.id}
+                      className="grid gap-4 md:grid-cols-[1.5fr_1fr_auto] items-center border border-dashed border-[#e6d2b8] rounded-lg p-4"
+                    >
+                      <div className="space-y-2">
+                        <p className="font-medium text-[#4a1f1f]">{request.recipient}</p>
+                        <p className="text-sm text-[#6b4d3c]">
+                          {request.city} • {request.distance} away
+                        </p>
+                        {request.notes && <p className="text-sm text-[#6b4d3c]">{request.notes}</p>}
+                      </div>
+                      <div className="space-y-2">
+                        <Badge variant={requestStatusVariant[request.status]}>{request.status}</Badge>
+                        {request.status === 'APPROVED' && (
+                          <p className="text-xs text-[#6b4d3c]">
+                            {request.volunteer ? `Volunteer: ${request.volunteer}` : 'Volunteer pending'}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex gap-2 justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleRequestAction(request.id, 'APPROVED')}
+                          disabled={request.status === 'APPROVED'}
+                        >
+                          Approve
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive"
+                          onClick={() => handleRequestAction(request.id, 'REJECTED')}
+                          disabled={request.status === 'REJECTED'}
+                        >
+                          Reject
+                        </Button>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <span className={`px-3 py-1 rounded text-xs font-semibold ${
-                        offer.status === 'available' ? 'bg-green-100 text-green-700' :
-                        offer.status === 'matched' ? 'bg-blue-100 text-blue-700' :
-                        'bg-gray-100 text-gray-700'
-                      }`}>
-                        {offer.status.charAt(0).toUpperCase() + offer.status.slice(1)}
-                      </span>
-                    </div>
-                  </div>
-                </Card>
-              ))
-            )}
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-        </main>
+        </Card>
+
+        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-[#4a1f1f]">Impact & History</h2>
+              <p className="text-sm text-[#6b4d3c]">
+                Past donations feed into impact certificates and CO₂ savings.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
+              <Download className="w-4 h-4" />
+              Export Report
+            </Button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="text-[#6b4d3c]">
+                <tr>
+                  <th className="py-3 font-medium">Date</th>
+                  <th className="py-3 font-medium">Items</th>
+                  <th className="py-3 font-medium">Recipient org</th>
+                  <th className="py-3 font-medium text-center">Meals donated</th>
+                  <th className="py-3 font-medium text-center">CO₂ saved</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[#f0e3d1]">
+                {donationHistory.map((record) => (
+                  <tr key={record.id}>
+                    <td className="py-4 text-[#6b4d3c]">{record.date}</td>
+                    <td className="py-4 text-[#4a1f1f]">{record.items}</td>
+                    <td className="py-4 text-[#6b4d3c]">{record.recipient}</td>
+                    <td className="py-4 text-center font-semibold text-[#4a1f1f]">{record.meals}</td>
+                    <td className="py-4 text-center text-[#6b4d3c]">{record.co2Saved} kg</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {donorInsights.map((insight) => (
+              <Card key={insight.title} className="p-4 border border-[#d9c7aa] bg-[#fdf8f0]">
+                <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">{insight.title}</p>
+                <p className="text-lg font-semibold text-[#4a1f1f]">{insight.detail}</p>
+              </Card>
+            ))}
+          </div>
+        </Card>
+
+        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-6">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-[#4a1f1f]">Organization & Notifications</h2>
+              <p className="text-sm text-[#6b4d3c]">
+                Keep donor details updated so volunteers can reach the right contact.
+              </p>
+            </div>
+            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
+              Edit Organization
+            </Button>
+          </div>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <p className="text-sm text-[#6b4d3c]">Organization</p>
+              <p className="text-lg font-semibold text-[#4a1f1f]">
+                {user?.organization ?? 'Not provided'}
+              </p>
+              <p className="text-sm text-[#6b4d3c]">Address: Bandra West, Mumbai</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-[#6b4d3c]">Verification</p>
+              <div className="flex items-center gap-2">
+                <Badge variant="success">Verified</Badge>
+                <span className="text-sm text-[#6b4d3c]">GST + FSSAI on file</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-[#6b4d3c]">Storage capability</p>
+              <p className="font-medium text-[#4a1f1f]">Hot holding · Cold chain · Dry pantry</p>
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm text-[#6b4d3c]">Notification preferences</p>
+              <p className="font-medium text-[#4a1f1f]">Email + SMS alerts</p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
+              <Building2 className="w-4 h-4" />
+              Update address
+            </Button>
+            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
+              Manage notifications
+            </Button>
+          </div>
+        </Card>
       </div>
     </div>
   )
