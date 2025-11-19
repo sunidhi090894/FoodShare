@@ -8,16 +8,13 @@ import {
 
 import { ObjectId } from 'mongodb'
 
-interface RouteContext {
-  params: { id: string }
-}
+// The 'RouteContext' interface was removed to resolve a TypeScript compilation error
+// due to conflicting type definitions in Next.js dynamic route handlers.
 
 export const dynamic = 'force-dynamic'
 
-export const PATCH = async (req: NextRequest, context: RouteContext) => {
+export const PATCH = async (req: NextRequest, context: { params: { id: string } }) => {
   const { id } = context.params
-
-
 
   let payload: OrganizationUpdatePayload
   try {
