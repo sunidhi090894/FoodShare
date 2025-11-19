@@ -50,6 +50,17 @@ interface ActiveOffer {
   recipientOrgName?: string
 }
 
+interface IncomingRequest {
+  id: string
+  surplusId: string
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'FULFILLED' | 'CANCELLED'
+  recipientOrgName: string
+  requestedByUserId: string
+  items?: SurplusItem[]
+  notes?: string
+  createdAt?: string
+}
+
 const offerStatusVariant: Record<OfferStatus, 'default' | 'success' | 'secondary' | 'warning' | 'destructive'> = {
   OPEN: 'default',
   MATCHED: 'secondary',
@@ -80,6 +91,8 @@ export default function DonorPage() {
   const [showRequestsModal, setShowRequestsModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedOffer, setSelectedOffer] = useState<ActiveOffer | null>(null)
+  const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([])
+  const [loadingRequests, setLoadingRequests] = useState(false)
 
   // Form state
   const [items, setItems] = useState<SurplusItem[]>([
@@ -257,9 +270,32 @@ export default function DonorPage() {
     }
   }
 
-  const handleViewRequests = (offer: ActiveOffer) => {
+  const handleViewRequests = async (offer: ActiveOffer) => {
     setSelectedOffer(offer)
     setShowRequestsModal(true)
+    setLoadingRequests(true)
+
+    try {
+      console.log(`Fetching requests for offer ${offer.id}`)
+      const res = await fetch(`/api/surplus/${offer.id}/requests`)
+      
+      if (!res.ok) {
+        const errorData = await res.json()
+        console.error(`API Error: ${res.status}`, errorData)
+        alert(`Failed to load requests: ${errorData.error}`)
+        setIncomingRequests([])
+      } else {
+        const requests = await res.json()
+        console.log(`Loaded ${requests.length} requests for offer ${offer.id}`, requests)
+        setIncomingRequests(requests)
+      }
+    } catch (err) {
+      console.error('Failed to load requests:', err)
+      alert(`Error loading requests: ${err instanceof Error ? err.message : 'Unknown error'}`)
+      setIncomingRequests([])
+    } finally {
+      setLoadingRequests(false)
+    }
   }
 
   const handleEditOffer = (offer: ActiveOffer) => {
@@ -286,6 +322,56 @@ export default function DonorPage() {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to cancel offer'
       setFetchError(errorMsg)
+    }
+  }
+
+  const handleApproveRequest = async (requestId: string) => {
+    try {
+      const res = await fetch(`/api/requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'APPROVED' }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to approve request')
+      }
+
+      // Reload requests
+      if (selectedOffer) {
+        await handleViewRequests(selectedOffer)
+      }
+      alert('Request approved successfully!')
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to approve request'
+      alert(errorMsg)
+    }
+  }
+
+  const handleRejectRequest = async (requestId: string) => {
+    if (!confirm('Are you sure you want to reject this request?')) return
+
+    try {
+      const res = await fetch(`/api/requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'REJECTED' }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to reject request')
+      }
+
+      // Reload requests
+      if (selectedOffer) {
+        await handleViewRequests(selectedOffer)
+      }
+      alert('Request rejected successfully!')
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to reject request'
+      alert(errorMsg)
     }
   }
 
@@ -924,9 +1010,9 @@ export default function DonorPage() {
         {/* View Requests Modal */}
         {showRequestsModal && selectedOffer && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-            <Card className="w-full max-w-md border border-[#d9c7aa] bg-white">
+            <Card className="w-full max-w-2xl border border-[#d9c7aa] bg-white max-h-96 overflow-y-auto">
               <div className="p-6 space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between sticky top-0 bg-white pb-4 border-b border-[#d9c7aa]">
                   <h2 className="text-lg font-semibold text-[#4a1f1f]">
                     Requests for: {selectedOffer.items.map(i => i.name).join(', ')}
                   </h2>
@@ -938,20 +1024,53 @@ export default function DonorPage() {
                   </button>
                 </div>
                 
-                <div className="space-y-3 max-h-96 overflow-y-auto">
-                  <p className="text-sm text-[#6b4d3c]">
-                    Status: <Badge variant="default">{selectedOffer.status}</Badge>
-                  </p>
-                  <p className="text-sm text-[#6b4d3c]">
-                    📍 {selectedOffer.pickupAddress}
-                  </p>
-                  <p className="text-sm text-[#6b4d3c]">
-                    🕐 {new Date(selectedOffer.pickupWindowStart).toLocaleString()} to{' '}
-                    {new Date(selectedOffer.pickupWindowEnd).toLocaleString()}
-                  </p>
-                  <p className="text-xs text-[#8c7b6b] bg-[#f9f5f0] p-2 rounded">
-                    Recipient requests will appear here once they submit requests for this offer.
-                  </p>
+                <div className="space-y-4">
+                  {loadingRequests ? (
+                    <p className="text-center text-[#6b4d3c] py-8">Loading requests...</p>
+                  ) : incomingRequests.length === 0 ? (
+                    <p className="text-center text-[#6b4d3c] py-8">No requests yet for this offer</p>
+                  ) : (
+                    incomingRequests.map((request) => (
+                      <div key={request.id} className="p-4 border border-[#e8d7c3] rounded-lg bg-[#faf8f4]">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-[#4a1f1f]">{request.recipientOrgName}</h3>
+                            <p className="text-sm text-[#6b4d3c] mt-1">
+                              Status: <Badge variant={request.status === 'PENDING' ? 'default' : request.status === 'APPROVED' ? 'success' : 'destructive'}>
+                                {request.status}
+                              </Badge>
+                            </p>
+                            {request.createdAt && (
+                              <p className="text-xs text-[#8c7b6b] mt-2">
+                                Requested: {new Date(request.createdAt).toLocaleString()}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            {request.status === 'PENDING' && (
+                              <>
+                                <Button
+                                  size="sm"
+                                  className="bg-green-600 hover:bg-green-700 text-white"
+                                  onClick={() => handleApproveRequest(request.id)}
+                                >
+                                  Approve
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-red-600 text-red-600 hover:bg-red-50"
+                                  onClick={() => handleRejectRequest(request.id)}
+                                >
+                                  Reject
+                                </Button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
 
                 <Button

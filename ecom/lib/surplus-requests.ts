@@ -76,7 +76,17 @@ export async function createSurplusRequest(
     createdAt: now,
     updatedAt: now,
   }
+  
+  console.log('Creating surplus request with data:', {
+    surplusId: doc.surplusId.toString(),
+    recipientOrgId: doc.recipientOrgId.toString(),
+    requestedByUserId: doc.requestedByUserId.toString(),
+    status: doc.status,
+  })
+  
   await requests.insertOne(doc)
+  
+  console.log('Successfully inserted request:', doc._id.toString())
 
   const donorOrg = await getOrganizationById(surplus.organizationId)
 
@@ -119,6 +129,16 @@ export async function getRequestById(id: string | ObjectId) {
   const requestsCol = await getCollection<SurplusRequestDocument>('surplus_requests')
   const objectId = typeof id === 'string' ? new ObjectId(id) : id
   return requestsCol.findOne({ _id: objectId })
+}
+
+export async function getRequestsBySurplusId(surplusId: ObjectId) {
+  const requestsCol = await getCollection<SurplusRequestDocument>('surplus_requests')
+  const docs = await requestsCol
+    .find({ surplusId })
+    .sort({ createdAt: -1 })
+    .toArray()
+
+  return docs
 }
 
 export async function updateRequestStatus(request: SurplusRequestDocument, status: RequestStatus) {

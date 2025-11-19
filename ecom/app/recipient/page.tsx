@@ -64,55 +64,58 @@ interface DeliveryRecord {
   feedback?: string
 }
 
-const deliveries: DeliveryRecord[] = [
-  {
-    id: 'DEL-144',
-    date: 'Oct 7',
-    donor: 'Urban Feast',
-    items: 'Veg thali (40 meals)',
-    meals: 40,
-    feedback: '',
-  },
-  {
-    id: 'DEL-143',
-    date: 'Oct 3',
-    donor: 'Downtown Café',
-    items: 'Soup + bread (32 meals)',
-    meals: 32,
-    feedback: 'Reached warm and on time.',
-  },
-]
-
-const impactCards = [
-  {
-    label: 'Total meals received',
-    value: '1,420',
-    helper: 'Since onboarding',
-    icon: Utensils,
-  },
-  {
-    label: 'Partner donors',
-    value: '18',
-    helper: 'Active relationships',
-    icon: Layers,
-  },
-]
+// Deliveries loaded from API - no hardcoded data
 
 export default function RecipientPortal() {
   useProtectedRoute('RECIPIENT')
   const [cityFilter, setCityFilter] = useState('All')
   const [dietFilter, setDietFilter] = useState<DietTag | 'ALL'>('ALL')
   const [feedbackDraft, setFeedbackDraft] = useState<Record<string, string>>({})
+  const [showEditOrgModal, setShowEditOrgModal] = useState(false)
+  const [showDetailsModal, setShowDetailsModal] = useState<SurplusOffer | null>(null)
+  const [orgFormData, setOrgFormData] = useState({ name: '', address: '', city: '', contact: '' })
 
   const [surplusOffers, setSurplusOffers] = useState<SurplusOffer[]>([])
   const [requests, setRequests] = useState<RecipientRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [userOrg, setUserOrg] = useState<any>(null)
 
   useEffect(() => {
     const loadData = async () => {
       try {
         setLoading(true)
+        
+        // Load user organization
+        const userRes = await fetch('/api/users/me')
+        if (!userRes.ok) {
+          throw new Error('Failed to load user profile')
+        }
+        
+        const userData = await userRes.json()
+        setUserOrg(userData)
+        
+        if (userData?.organizationId) {
+          try {
+            const orgRes = await fetch(`/api/organizations/${userData.organizationId}`)
+            if (orgRes.ok) {
+              const orgData = await orgRes.json()
+              setOrgFormData({
+                name: orgData.name || '',
+                address: orgData.address || '',
+                city: orgData.city || '',
+                contact: orgData.contact || '',
+              })
+            } else {
+              console.error('Failed to load organization:', orgRes.status)
+            }
+          } catch (err) {
+            console.error('Error loading organization details:', err)
+          }
+        } else {
+          console.warn('User has no organization assigned')
+        }
+        
         // Load available surplus
         const offersRes = await fetch('/api/surplus/available')
         if (offersRes.ok) {
@@ -127,7 +130,9 @@ export default function RecipientPortal() {
           setRequests(myRequests)
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load data')
+        const errorMsg = err instanceof Error ? err.message : 'Failed to load data'
+        console.error('Data loading error:', err)
+        setError(errorMsg)
       } finally {
         setLoading(false)
       }
@@ -147,12 +152,23 @@ export default function RecipientPortal() {
       })
 
       if (res.ok) {
-        // Reload requests
-        const requestsRes = await fetch('/api/requests/my')
+        // Reload requests and surplus offers to update UI
+        const [requestsRes, offersRes] = await Promise.all([
+          fetch('/api/requests/my'),
+          fetch('/api/surplus/available'),
+        ])
+
         if (requestsRes.ok) {
           const myRequests = await requestsRes.json()
           setRequests(myRequests)
         }
+
+        if (offersRes.ok) {
+          const offers = await offersRes.json()
+          setSurplusOffers(offers)
+        }
+
+        setShowDetailsModal(null)
         alert('Request submitted successfully!')
       } else {
         const data = await res.json()
@@ -179,6 +195,60 @@ export default function RecipientPortal() {
     }
   }
 
+  const handleEditOrganization = async (e: React.FormEvent) => {
+    e.preventDefault()
+    try {
+      if (!userOrg?.organizationId) {
+        throw new Error('Organization ID not found. Please refresh the page.')
+      }
+
+      const res = await fetch(`/api/organizations/${userOrg.organizationId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: orgFormData.name,
+          address: orgFormData.address,
+          city: orgFormData.city,
+          contact: orgFormData.contact,
+        }),
+      })
+
+      if (!res.ok) {
+        const errorData = await res.json()
+        throw new Error(errorData.error || `HTTP ${res.status}: Failed to update organization`)
+      }
+
+      const updated = await res.json()
+      setOrgFormData({
+        name: updated.name || '',
+        address: updated.address || '',
+        city: updated.city || '',
+        contact: updated.contact || '',
+      })
+      setShowEditOrgModal(false)
+      alert('Organization updated successfully!')
+    } catch (err) {
+      console.error('Edit organization error:', err)
+      alert(err instanceof Error ? err.message : 'Failed to update organization')
+    }
+  }
+
+  const handleSaveFeedback = async (requestId: string) => {
+    try {
+      const res = await fetch(`/api/requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: feedbackDraft[requestId] || '' }),
+      })
+
+      if (res.ok) {
+        alert('Feedback saved successfully!')
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to save feedback')
+    }
+  }
+
   const filteredOffers = useMemo(() => {
     return surplusOffers.filter((offer) => {
       const matchesCity =
@@ -188,10 +258,24 @@ export default function RecipientPortal() {
     })
   }, [surplusOffers, cityFilter, dietFilter])
 
+  // Calculate real metrics from requests
   const pendingRequestCount = requests.filter((r) => r.status === 'PENDING').length
-  const totalMealsThisMonth = 260
-  const totalDonations = 45
+  const fulfilledRequests = requests.filter((r) => r.status === 'FULFILLED')
+  
+  // Calculate meals this month from fulfilled requests
+  const mealsThisMonth = fulfilledRequests.reduce((total, req) => {
+    if (req.surplus?.items) {
+      const weight = req.surplus.items.reduce((sum, item) => {
+        return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+      }, 0)
+      return total + Math.round(weight * 2.2)
+    }
+    return total
+  }, 0)
 
+  // Count unique donor organizations
+  const uniqueDonors = new Set(fulfilledRequests.map((r) => r.surplus?.organization?.name)).size
+  
   const summaryCards: { label: string; value: string; helper: string; icon: LucideIcon }[] = [
     {
       label: 'Available Surplus Nearby',
@@ -207,13 +291,13 @@ export default function RecipientPortal() {
     },
     {
       label: 'Meals Received This Month',
-      value: totalMealsThisMonth.toString(),
+      value: mealsThisMonth.toString(),
       helper: 'Goal: 400 meals',
       icon: Utensils,
     },
     {
       label: 'Total Donations Received',
-      value: totalDonations.toString(),
+      value: fulfilledRequests.length.toString(),
       helper: 'Since joining AaharSetu',
       icon: Layers,
     },
@@ -319,7 +403,11 @@ export default function RecipientPortal() {
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <Button size="sm" className="bg-[#8c3b3c] hover:bg-[#732f30] flex-1">
+                    <Button 
+                      size="sm" 
+                      className="bg-[#8c3b3c] hover:bg-[#732f30] flex-1"
+                      onClick={() => setShowDetailsModal(offer)}
+                    >
                       View Details
                     </Button>
                     <Button
@@ -418,83 +506,256 @@ export default function RecipientPortal() {
             <MessageSquare className="w-5 h-5 text-[#8c3b3c]" />
           </div>
 
-          <div className="space-y-4">
-            {deliveries.map((delivery) => (
-              <div key={delivery.id} className="border border-dashed border-[#e6d2b8] rounded-lg p-4 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">{delivery.date}</p>
-                    <h3 className="text-lg font-semibold text-[#4a1f1f]">{delivery.items}</h3>
+          {fulfilledRequests.length === 0 ? (
+            <p className="text-center text-[#6b4d3c] py-8">No completed deliveries yet.</p>
+          ) : (
+            <div className="space-y-4">
+              {fulfilledRequests.map((request) => {
+                const totalWeight = request.surplus?.items.reduce((sum, item) => {
+                  return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+                }, 0) || 0
+                const meals = Math.round(totalWeight * 2.2)
+                const date = new Date(request.surplus?.pickupWindowStart || '').toLocaleDateString('en-US', { 
+                  month: 'short', 
+                  day: 'numeric' 
+                })
+
+                return (
+                  <div key={request.id} className="border border-dashed border-[#e6d2b8] rounded-lg p-4 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">{date}</p>
+                        <h3 className="text-lg font-semibold text-[#4a1f1f]">
+                          {request.surplus?.items.map((i) => `${i.quantity} ${i.unit} ${i.name}`).join(', ')}
+                        </h3>
+                      </div>
+                      <Badge variant="secondary">{meals} meals</Badge>
+                    </div>
+                    <p className="text-sm text-[#6b4d3c]">
+                      Donor: {request.surplus?.organization?.name || 'Unknown'}
+                    </p>
+                    <textarea
+                      value={feedbackDraft[request.id] ?? ''}
+                      onChange={(e) =>
+                        setFeedbackDraft((prev) => ({ ...prev, [request.id]: e.target.value }))
+                      }
+                      placeholder="Add feedback or notes..."
+                      className="w-full border border-[#d9c7aa] rounded-md px-3 py-2 text-sm bg-white"
+                    />
+                    <div className="flex justify-end">
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+                        onClick={() => handleSaveFeedback(request.id)}
+                      >
+                        Save Feedback
+                      </Button>
+                    </div>
                   </div>
-                  <Badge variant="secondary">{delivery.meals} meals</Badge>
-                </div>
-                <p className="text-sm text-[#6b4d3c]">
-                  Donor: {delivery.donor}
-                </p>
-                <textarea
-                  value={feedbackDraft[delivery.id] ?? delivery.feedback ?? ''}
-                  onChange={(e) =>
-                    setFeedbackDraft((prev) => ({ ...prev, [delivery.id]: e.target.value }))
-                  }
-                  placeholder="Add feedback or notes..."
-                  className="w-full border border-[#d9c7aa] rounded-md px-3 py-2 text-sm bg-white"
-                />
-                <div className="flex justify-end">
-                  <Button size="sm" variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-                    Save Feedback
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
+                )
+              })}
+            </div>
+          )}
         </Card>
 
         {/* Org Profile */}
-        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-[#4a1f1f]">Org Profile</h2>
-              <p className="text-sm text-[#6b4d3c]">
-                Keep your organization details up to date.
-              </p>
+        {userOrg?.organizationId ? (
+          <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#4a1f1f]">Organization Profile</h2>
+                <p className="text-sm text-[#6b4d3c]">
+                  Keep your organization details up to date.
+                </p>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+                onClick={() => setShowEditOrgModal(true)}
+              >
+                Edit organization
+              </Button>
             </div>
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              Edit organization
-            </Button>
-          </div>
-          <div className="grid gap-5 md:grid-cols-2">
-            <div className="space-y-1">
-              <p className="text-sm text-[#6b4d3c]">Organization</p>
-              <h3 className="text-lg font-semibold text-[#4a1f1f]">Hope Shelter Trust</h3>
-              <p className="text-sm text-[#6b4d3c]">Bandra East, Mumbai · +91 90000 12345</p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6b4d3c]">Verification status</p>
-              <div className="flex items-center gap-2">
-                <Badge variant="success">Verified</Badge>
-                <span className="text-sm text-[#6b4d3c]">Renewed Sep 2024</span>
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="space-y-1">
+                <p className="text-sm text-[#6b4d3c]">Organization</p>
+                <h3 className="text-lg font-semibold text-[#4a1f1f]">{orgFormData.name || 'Not set'}</h3>
+                <p className="text-sm text-[#6b4d3c]">{orgFormData.address} · {orgFormData.contact || 'No contact'}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-[#6b4d3c]">Verification status</p>
+                <div className="flex items-center gap-2">
+                  <Badge variant="success">Verified</Badge>
+                  <span className="text-sm text-[#6b4d3c]">Renewed Sep 2024</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm text-[#6b4d3c]">City</p>
+                <p className="font-medium text-[#4a1f1f]">{orgFormData.city || 'Not set'}</p>
               </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6b4d3c]">Storage capability</p>
-              <p className="font-medium text-[#4a1f1f]">Cold fridge · Freezer · Dry pantry</p>
+          </Card>
+        ) : (
+          <Card className="p-6 border border-[#d9c7aa] bg-[#fef9f3] space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#4a1f1f]">Organization Profile</h2>
+                <p className="text-sm text-[#6b4d3c]">
+                  Set up your organization to start requesting surplus food.
+                </p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6b4d3c]">Operating hours</p>
-              <p className="font-medium text-[#4a1f1f]">Mon – Sat · 9:00 AM – 9:00 PM</p>
+            <div className="p-4 bg-white border border-[#e8d7c3] rounded-lg">
+              <p className="text-sm text-[#6b4d3c] mb-4">
+                You haven't set up your organization yet. Create or join an organization to request surplus food from donors.
+              </p>
+              <Button 
+                className="bg-[#8c3b3c] hover:bg-[#732f30] text-white"
+                onClick={() => window.location.href = '/recipient/organization'}
+              >
+                Set Up Organization
+              </Button>
             </div>
+          </Card>
+        )}
+
+        {/* Edit Organization Modal */}
+        {showEditOrgModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md border border-[#d9c7aa] bg-white">
+              <div className="p-6 space-y-6">
+                <h2 className="text-xl font-semibold text-[#4a1f1f]">Edit Organization</h2>
+                <form onSubmit={handleEditOrganization} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">Organization Name</label>
+                    <input
+                      type="text"
+                      value={orgFormData.name}
+                      onChange={(e) => setOrgFormData({...orgFormData, name: e.target.value})}
+                      className="w-full border border-[#d9c7aa] rounded-md px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">Address</label>
+                    <input
+                      type="text"
+                      value={orgFormData.address}
+                      onChange={(e) => setOrgFormData({...orgFormData, address: e.target.value})}
+                      className="w-full border border-[#d9c7aa] rounded-md px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">City</label>
+                    <input
+                      type="text"
+                      value={orgFormData.city}
+                      onChange={(e) => setOrgFormData({...orgFormData, city: e.target.value})}
+                      className="w-full border border-[#d9c7aa] rounded-md px-3 py-2 text-sm"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">Contact</label>
+                    <input
+                      type="text"
+                      value={orgFormData.contact}
+                      onChange={(e) => setOrgFormData({...orgFormData, contact: e.target.value})}
+                      className="w-full border border-[#d9c7aa] rounded-md px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div className="flex gap-3">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => setShowEditOrgModal(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="flex-1 bg-[#8c3b3c] hover:bg-[#732f30] text-white"
+                    >
+                      Save Changes
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </Card>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              <Building2 className="w-4 h-4 mr-2" />
-              Update address
-            </Button>
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Manage verification
-            </Button>
+        )}
+
+        {/* View Details Modal */}
+        {showDetailsModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md border border-[#d9c7aa] bg-white">
+              <div className="p-6 space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-[#4a1f1f]">Surplus Details</h2>
+                  <button
+                    onClick={() => setShowDetailsModal(null)}
+                    className="absolute top-4 right-4 text-[#6b4d3c] hover:text-[#4a1f1f]"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Donor</p>
+                    <p className="text-lg font-semibold text-[#4a1f1f]">{showDetailsModal.organization?.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Items</p>
+                    <p className="text-lg font-semibold text-[#4a1f1f]">
+                      {showDetailsModal.items.map((i) => `${i.quantity} ${i.unit} ${i.name}`).join(', ')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Pickup Address</p>
+                    <p className="text-sm text-[#4a1f1f]">{showDetailsModal.pickupAddress}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Pickup Window</p>
+                    <p className="text-sm text-[#4a1f1f]">
+                      {new Date(showDetailsModal.pickupWindowStart).toLocaleString()} - {new Date(showDetailsModal.pickupWindowEnd).toLocaleString()}
+                    </p>
+                  </div>
+                  {showDetailsModal.items.flatMap((i) => i.dietaryTags || []).length > 0 && (
+                    <div>
+                      <p className="text-sm text-[#6b4d3c] font-semibold mb-2">Dietary Tags</p>
+                      <div className="flex flex-wrap gap-2">
+                        {showDetailsModal.items.flatMap((i) => i.dietaryTags || []).map((tag) => (
+                          <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-[#d9c7aa]"
+                    onClick={() => setShowDetailsModal(null)}
+                  >
+                    Close
+                  </Button>
+                  <Button
+                    className="flex-1 bg-[#8c3b3c] hover:bg-[#732f30] text-white"
+                    onClick={() => {
+                      handleRequestSurplus(showDetailsModal.id)
+                    }}
+                  >
+                    Request Surplus
+                  </Button>
+                </div>
+              </div>
+            </Card>
           </div>
-        </Card>
+        )}
       </div>
     </div>
   )
