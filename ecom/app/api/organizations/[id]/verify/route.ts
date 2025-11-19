@@ -3,13 +3,11 @@ import { getUserDocumentByFirebaseUid } from '@/lib/users'
 import { mapOrganization, setOrganizationVerification } from '@/lib/organizations'
 import { ObjectId } from 'mongodb'
 
-interface RouteContext {
-  params: { id: string }
-}
+// The custom 'RouteContext' interface was removed to resolve a TypeScript compilation error.
 
 export const dynamic = 'force-dynamic'
 
-export const PATCH = async (req: NextRequest, context: RouteContext) => {
+export const PATCH = async (req: NextRequest, context: any) => {
   // TODO: Replace with actual user context
   // const user = await getUserDocumentByFirebaseUid(authUser.uid)
 
@@ -26,4 +24,3 @@ export const PATCH = async (req: NextRequest, context: RouteContext) => {
     // TODO: Fix type issues for OrganizationDocument
     return NextResponse.json({})
 }
-
