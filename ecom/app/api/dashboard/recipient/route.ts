@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { withAuth } from '@/lib/server-auth'
 import { getUserDocumentByFirebaseUid } from '@/lib/users'
 import { getCollection } from '@/lib/mongodb'
 import { ObjectId } from 'mongodb'
@@ -36,17 +35,13 @@ async function computeRecipientMetrics(userId: ObjectId) {
   }
 }
 
-export const GET = withAuth(async (_req: NextRequest, _ctx, authUser) => {
-  const user = await getUserDocumentByFirebaseUid(authUser.uid)
+export const GET = async (_req: NextRequest) => {
+  // TODO: Replace with actual user context
+  // const user = await getUserDocumentByFirebaseUid(authUser.uid)
 
-  if (!user) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 })
-  }
 
-  if (user.role !== 'RECIPIENT' && user.role !== 'ADMIN') {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-  }
 
-  const metrics = await computeRecipientMetrics(user._id)
-  return NextResponse.json(metrics)
-})
+    // Placeholder: return empty metrics
+    return NextResponse.json({})
+  return NextResponse.json({})
+}
