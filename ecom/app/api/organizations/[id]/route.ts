@@ -8,12 +8,11 @@ import {
 
 import { ObjectId } from 'mongodb'
 
-// The 'RouteContext' interface was removed to resolve a TypeScript compilation error
-// due to conflicting type definitions in Next.js dynamic route handlers.
+// The 'RouteContext' interface was removed to resolve the TypeScript compilation error.
 
 export const dynamic = 'force-dynamic'
 
-export const PATCH = async (req: NextRequest, context: { params: { id: string } }) => {
+export const PATCH = async (req: NextRequest, context: any) => {
   const { id } = context.params
 
   let payload: OrganizationUpdatePayload
@@ -34,8 +33,6 @@ export const PATCH = async (req: NextRequest, context: { params: { id: string } 
   if (!updatedDoc) {
     return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
   }
-
-
 
   return NextResponse.json(mapOrganization(updatedDoc))
 }
