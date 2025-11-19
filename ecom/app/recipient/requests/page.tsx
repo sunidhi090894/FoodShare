@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
-import { useAuth } from '@/contexts/auth-context'
+
 import { Clock, Store, CheckCircle2, Loader2 } from 'lucide-react'
 
 type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'FULFILLED'
@@ -35,30 +35,22 @@ const statusCopy: Record<RequestStatus, { label: string; variant: 'default' | 's
 
 export default function RecipientRequestsPage() {
   useProtectedRoute('RECIPIENT')
-  const { firebaseUser } = useAuth()
+  // TODO: Replace with actual user context if needed
   const [requests, setRequests] = useState<RequestResponse[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!firebaseUser) return
-
+    // TODO: Add authentication/user context if needed
     const fetchRequests = async () => {
       setLoading(true)
       setError('')
       try {
-        const token = await firebaseUser.getIdToken()
-        const res = await fetch('/api/requests/mine', {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        })
-
+        const res = await fetch('/api/requests/mine')
         if (!res.ok) {
           const data = await res.json()
           throw new Error(data.error || 'Unable to load requests')
         }
-
         const data = await res.json()
         setRequests(data)
       } catch (err) {
@@ -68,9 +60,8 @@ export default function RecipientRequestsPage() {
         setLoading(false)
       }
     }
-
     fetchRequests()
-  }, [firebaseUser])
+  }, [])
 
   const summaryText = (request: RequestResponse) => {
     const item = request.surplus?.items?.[0]

@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
-import { useAuth } from '@/contexts/auth-context'
+
 import { MapPin, Clock, Store, Loader2 } from 'lucide-react'
 
 interface OrganizationSummary {
@@ -27,7 +27,7 @@ interface SurplusOffer {
 
 export default function RecipientSurplusPage() {
   useProtectedRoute('RECIPIENT')
-  const { firebaseUser } = useAuth()
+  // TODO: Replace with actual user context if needed
   const [offers, setOffers] = useState<SurplusOffer[]>([])
   const [cityFilter, setCityFilter] = useState<string>('')
   const [loading, setLoading] = useState(false)
@@ -36,38 +36,18 @@ export default function RecipientSurplusPage() {
   const [feedback, setFeedback] = useState('')
 
   useEffect(() => {
-    if (!firebaseUser) return
-    const loadOrgCity = async () => {
-      try {
-        const token = await firebaseUser.getIdToken()
-        const res = await fetch('/api/organizations/mine', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (res.ok) {
-          const organizations = await res.json()
-          if (organizations.length > 0 && organizations[0].city) {
-            setCityFilter((prev) => prev || organizations[0].city)
-          }
-        }
-      } catch (err) {
-        console.error('Unable to load organization city', err)
-      }
-    }
-    loadOrgCity()
-  }, [firebaseUser])
+    // TODO: Add authentication/user context if needed
+    // Example: fetch organization city if user context is available
+  }, [])
 
   useEffect(() => {
-    if (!firebaseUser) return
-
+    // TODO: Add authentication/user context if needed
     const fetchOffers = async () => {
       setLoading(true)
       setError('')
       try {
-        const token = await firebaseUser.getIdToken()
         const params = cityFilter ? `?city=${encodeURIComponent(cityFilter)}` : ''
-        const res = await fetch(`/api/surplus/available${params}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await fetch(`/api/surplus/available${params}`)
         if (!res.ok) {
           const data = await res.json()
           throw new Error(data.error || 'Unable to load surplus offers')
@@ -81,9 +61,8 @@ export default function RecipientSurplusPage() {
         setLoading(false)
       }
     }
-
     fetchOffers()
-  }, [firebaseUser, cityFilter])
+  }, [cityFilter])
 
   const summaryText = (items: SurplusOffer['items']) => {
     if (!items?.length) return 'Multiple items'
@@ -92,18 +71,14 @@ export default function RecipientSurplusPage() {
   }
 
   const handleRequest = async (offerId: string) => {
-    if (!firebaseUser) return
+    // TODO: Add authentication/user context if needed
     setRequestingId(offerId)
     setFeedback('')
     setError('')
 
     try {
-      const token = await firebaseUser.getIdToken()
       const res = await fetch(`/api/surplus/${offerId}/request`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
       })
 
       if (!res.ok) {

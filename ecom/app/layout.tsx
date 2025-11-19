@@ -9,7 +9,7 @@ const _geistMono = Geist_Mono({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: 'AaharSetu - Reduce Food Waste, Feed Communities',
   description: 'Connect surplus food with those who need it. AaharSetu matches donors with recipients to reduce waste and fight hunger.',
-  generator: 'v0.app',
+  generator: 'AaharSetu',
   icons: {
     icon: [
       {

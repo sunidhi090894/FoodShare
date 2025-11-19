@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts/auth-context'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 
 interface ItemFormState {
@@ -20,7 +19,7 @@ interface ItemFormState {
 export default function NewSurplusOfferPage() {
   useProtectedRoute('DONOR')
   const router = useRouter()
-  const { firebaseUser } = useAuth()
+  // TODO: Replace with actual user context if needed
   const [items, setItems] = useState<ItemFormState[]>([
     { name: '', quantity: '', unit: 'kg', category: '', dietaryTags: '', allergenTags: '' },
   ])
@@ -46,12 +45,11 @@ export default function NewSurplusOfferPage() {
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    if (!firebaseUser) return
     setIsSubmitting(true)
     setError('')
 
     try {
-      const token = await firebaseUser.getIdToken()
+      // TODO: Add authentication/user context if needed
       const payload = {
         items: items.map((item) => ({
           name: item.name,
@@ -72,7 +70,6 @@ export default function NewSurplusOfferPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       })

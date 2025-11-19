@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts/auth-context'
+
 import { requiresOrganizationCompletion } from '@/lib/auth-redirect'
 import type { OrganizationResponse, OrganizationType } from '@/lib/organizations'
 
@@ -18,7 +18,7 @@ const STORAGE_OPTIONS = [
 export default function OrganizationOnboardingPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { backendUser, firebaseUser, authLoading, refreshBackendUser } = useAuth()
+  // TODO: Replace with actual user context if needed
   const [existingOrg, setExistingOrg] = useState<OrganizationResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
@@ -39,62 +39,11 @@ export default function OrganizationOnboardingPage() {
   })
 
   useEffect(() => {
-    if (authLoading) return
-
-    if (!backendUser || !firebaseUser) {
-      router.replace('/login')
-      return
-    }
-
-    if (backendUser.role === 'VOLUNTEER') {
-      router.replace('/dashboard')
-      return
-    }
-
-    if (!requiresOrganizationCompletion(backendUser)) {
-      router.replace('/dashboard')
-      return
-    }
-
-    const loadExistingOrganization = async () => {
-      try {
-        const token = await firebaseUser.getIdToken()
-        const res = await fetch('/api/organizations/mine', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!res.ok) {
-          throw new Error('Unable to load organization profile')
-        }
-        const organizations: OrganizationResponse[] = await res.json()
-        if (organizations.length > 0) {
-          const org = organizations[0]
-          setExistingOrg(org)
-          setFormData((prev) => ({
-            ...prev,
-            name: org.name,
-            type: org.type,
-            address: org.address,
-            city: org.city,
-            pincode: org.pincode,
-            latitude: org.geoLocation?.latitude?.toString() || '',
-            longitude: org.geoLocation?.longitude?.toString() || '',
-            contactPerson: org.contactPerson,
-            contactPhone: org.contactPhone,
-            storageCapabilities: org.storageCapabilities || [],
-            serviceStart: org.serviceHours?.[0]?.open || prev.serviceStart,
-            serviceEnd: org.serviceHours?.[0]?.close || prev.serviceEnd,
-          }))
-        }
-      } catch (err) {
-        console.error(err)
-        setError('Unable to load your organization details. Please try again.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    loadExistingOrganization()
-  }, [authLoading, backendUser, firebaseUser, router])
+    // TODO: Add authentication/user context if needed
+    // Example: fetch organization profile if user context is available
+    // Example: redirect to login if user context is missing
+    setLoading(false)
+  }, [])
 
   const toggleStorageCapability = (capability: string) => {
     setFormData((prev) => {
@@ -110,13 +59,10 @@ export default function OrganizationOnboardingPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!firebaseUser) return
-
+    // TODO: Add authentication/user context if needed
     setSubmitting(true)
     setError('')
-
     try {
-      const token = await firebaseUser.getIdToken()
       const payload = {
         name: formData.name,
         type: formData.type,
@@ -141,25 +87,19 @@ export default function OrganizationOnboardingPage() {
         contactPerson: formData.contactPerson,
         contactPhone: formData.contactPhone,
       }
-
       const endpoint = existingOrg ? `/api/organizations/${existingOrg.id}` : '/api/organizations'
       const method = existingOrg ? 'PATCH' : 'POST'
-
       const res = await fetch(endpoint, {
         method,
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       })
-
       if (!res.ok) {
         const data = await res.json()
         throw new Error(data.error || 'Unable to save organization information')
       }
-
-      await refreshBackendUser()
       router.push('/dashboard')
     } catch (err) {
       console.error('Failed to save organization', err)

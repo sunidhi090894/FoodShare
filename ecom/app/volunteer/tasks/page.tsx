@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
-import { useAuth } from '@/contexts/auth-context'
+
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -42,7 +42,7 @@ const STATUS_COPY: Record<PickupStatus, { label: string; variant: 'default' | 's
 
 export default function VolunteerTasksPage() {
   useProtectedRoute('VOLUNTEER')
-  const { firebaseUser } = useAuth()
+  // TODO: Replace with actual user context if needed
   const [tasks, setTasks] = useState<PickupTask[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -52,16 +52,12 @@ export default function VolunteerTasksPage() {
   )
 
   useEffect(() => {
-    if (!firebaseUser) return
-
+    // TODO: Add authentication/user context if needed
     const fetchTasks = async () => {
       setLoading(true)
       setError('')
       try {
-        const token = await firebaseUser.getIdToken()
-        const res = await fetch('/api/pickups/my', {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await fetch('/api/pickups/my')
         if (!res.ok) {
           const data = await res.json()
           throw new Error(data.error || 'Unable to load tasks')
@@ -75,9 +71,8 @@ export default function VolunteerTasksPage() {
         setLoading(false)
       }
     }
-
     fetchTasks()
-  }, [firebaseUser])
+  }, [])
 
   const groupedTasks = useMemo(() => {
     return {
@@ -88,7 +83,7 @@ export default function VolunteerTasksPage() {
   }, [tasks])
 
   const updateStatus = async (taskId: string, nextStatus: PickupStatus) => {
-    if (!firebaseUser) return
+    // TODO: Add authentication/user context if needed
     if (nextStatus === 'DELIVERED') {
       const form = deliveryForms[taskId]
       const weight = form?.weight ? parseFloat(form.weight) : NaN
@@ -100,7 +95,6 @@ export default function VolunteerTasksPage() {
     setUpdating(taskId)
     setError('')
     try {
-      const token = await firebaseUser.getIdToken()
       const payload: Record<string, unknown> = { status: nextStatus }
       if (nextStatus === 'DELIVERED') {
         const form = deliveryForms[taskId]
@@ -112,7 +106,6 @@ export default function VolunteerTasksPage() {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify(payload),
       })

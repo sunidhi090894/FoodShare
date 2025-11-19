@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts/auth-context'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 
 interface SurplusItem {
@@ -27,25 +26,22 @@ interface SurplusOffer {
 
 const STATUS_FILTERS = ['ALL', 'OPEN', 'MATCHED', 'FULFILLED', 'EXPIRED', 'CANCELLED'] as const
 
-export default function DonorSurplusListPage() {
+export default function SurplusPage() {
   useProtectedRoute('DONOR')
-  const { firebaseUser } = useAuth()
+  // TODO: Replace with actual user context if needed
   const [filter, setFilter] = useState<(typeof STATUS_FILTERS)[number]>('ALL')
   const [offers, setOffers] = useState<SurplusOffer[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
   useEffect(() => {
-    if (!firebaseUser) return
+    // TODO: Add authentication/user context if needed
     const fetchOffers = async () => {
       setLoading(true)
       setError('')
       try {
-        const token = await firebaseUser.getIdToken()
         const params = filter === 'ALL' ? '' : `?status=${filter}`
-        const res = await fetch(`/api/surplus/my${params}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
+        const res = await fetch(`/api/surplus/my${params}`)
         if (!res.ok) {
           const data = await res.json()
           throw new Error(data.error || 'Unable to load offers')
@@ -60,19 +56,17 @@ export default function DonorSurplusListPage() {
       }
     }
     fetchOffers()
-  }, [firebaseUser, filter])
+  }, [filter])
 
   const groupedOffers = useMemo(() => offers, [offers])
 
   const cancelOffer = async (offerId: string) => {
-    if (!firebaseUser) return
+    // TODO: Add authentication/user context if needed
     try {
-      const token = await firebaseUser.getIdToken()
       const res = await fetch(`/api/surplus/${offerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ status: 'CANCELLED' }),
       })

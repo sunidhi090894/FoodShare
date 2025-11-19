@@ -35,7 +35,6 @@ export default function LandingPage() {
           </div>
           {/* Buttons removed per request */}
           <div className="pt-8">
-            <img src="/food-donation-logistics-network.jpg" alt="AaharSetu Network" className="rounded-lg border border-border shadow-lg" />
           </div>
         </div>
       </section>
