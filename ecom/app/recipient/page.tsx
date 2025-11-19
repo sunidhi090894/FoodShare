@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { LucideIcon } from 'lucide-react'
 import {
   MapPin,
@@ -8,13 +8,11 @@ import {
   Utensils,
   Search,
   Layers,
-  ClipboardList,
   Truck,
   Download,
   MessageSquare,
   Building2,
   CheckCircle2,
-  Sparkles,
 } from 'lucide-react'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { Card } from '@/components/ui/card'
@@ -25,26 +23,36 @@ type DietTag = 'VEG' | 'NON_VEG' | 'VEGAN'
 type TimeFilter = 'NOW' | 'LATER' | 'TOMORROW'
 type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'FULFILLED' | 'CANCELLED'
 
+interface SurplusItem {
+  name: string
+  quantity: number
+  unit: string
+  category?: string
+  dietaryTags?: string[]
+  allergenTags?: string[]
+}
+
 interface SurplusOffer {
   id: string
-  donor: string
-  summary: string
-  pickupWindow: string
-  distance: string
-  city: string
-  dietary: DietTag[]
-  storage: string
-  timeframe: TimeFilter
-  matchScore: number
+  createdByUserId: string
+  items: SurplusItem[]
+  pickupWindowStart: string
+  pickupWindowEnd: string
+  pickupAddress: string
+  status: 'OPEN' | 'MATCHED' | 'FULFILLED' | 'EXPIRED' | 'CANCELLED'
+  expiryDateTime: string
+  totalWeightKg?: number
+  organization?: {
+    name: string
+    city?: string
+  }
 }
 
 interface RecipientRequest {
   id: string
-  summary: string
-  donor: string
+  surplusId: string
   status: RequestStatus
-  expectedPickup?: string
-  volunteer?: string
+  surplus?: SurplusOffer
 }
 
 interface DeliveryRecord {
@@ -55,69 +63,6 @@ interface DeliveryRecord {
   meals: number
   feedback?: string
 }
-
-const surplusOffers: SurplusOffer[] = [
-  {
-    id: 'FS-4821',
-    donor: 'Spice Route Café',
-    summary: 'Biryani trays (30 plates)',
-    pickupWindow: 'Today · 2:00 – 4:00 PM',
-    distance: '2.1 km',
-    city: 'Bandra',
-    dietary: ['NON_VEG'],
-    storage: 'Hot meals',
-    timeframe: 'NOW',
-    matchScore: 0.92,
-  },
-  {
-    id: 'FS-4812',
-    donor: 'Fresh Bowl Kitchen',
-    summary: 'Salad bowls (20 servings)',
-    pickupWindow: 'Today · 7:00 – 8:30 PM',
-    distance: '4.4 km',
-    city: 'Mahim',
-    dietary: ['VEG', 'VEGAN'],
-    storage: 'Cold chain',
-    timeframe: 'LATER',
-    matchScore: 0.81,
-  },
-  {
-    id: 'FS-4798',
-    donor: 'Sunrise Bakery',
-    summary: 'Bread loaves + pastries (25 packs)',
-    pickupWindow: 'Tomorrow · 9:30 – 11:00 AM',
-    distance: '7.0 km',
-    city: 'Worli',
-    dietary: ['VEG'],
-    storage: 'Dry storage',
-    timeframe: 'TOMORROW',
-    matchScore: 0.62,
-  },
-]
-
-const requestRows: RecipientRequest[] = [
-  {
-    id: 'REQ-901',
-    summary: 'Biryani trays (30 plates)',
-    donor: 'Spice Route Café',
-    status: 'PENDING',
-  },
-  {
-    id: 'REQ-880',
-    summary: 'Salad bowls (20 servings)',
-    donor: 'Fresh Bowl Kitchen',
-    status: 'APPROVED',
-    expectedPickup: 'Today · 7:15 PM',
-    volunteer: 'Rahul (Volunteer) · +91 90001 55662',
-  },
-  {
-    id: 'REQ-845',
-    summary: 'Assorted bakery (25 packs)',
-    donor: 'Sunrise Bakery',
-    status: 'FULFILLED',
-    expectedPickup: 'Yesterday · 10:00 AM',
-  },
-]
 
 const deliveries: DeliveryRecord[] = [
   {
@@ -157,33 +102,93 @@ export default function RecipientPortal() {
   useProtectedRoute('RECIPIENT')
   const [cityFilter, setCityFilter] = useState('All')
   const [dietFilter, setDietFilter] = useState<DietTag | 'ALL'>('ALL')
-  const [timeFilter, setTimeFilter] = useState<TimeFilter | 'ALL'>('ALL')
   const [feedbackDraft, setFeedbackDraft] = useState<Record<string, string>>({})
 
-  const demandForecast = {
-    range: '220 – 260 meals',
-    insight: 'You usually serve 15% more meals on Sundays. Prep extra cold storage for salads.',
+  const [surplusOffers, setSurplusOffers] = useState<SurplusOffer[]>([])
+  const [requests, setRequests] = useState<RecipientRequest[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true)
+        // Load available surplus
+        const offersRes = await fetch('/api/surplus/available')
+        if (offersRes.ok) {
+          const offers = await offersRes.json()
+          setSurplusOffers(offers)
+        }
+
+        // Load my requests
+        const requestsRes = await fetch('/api/requests/my')
+        if (requestsRes.ok) {
+          const myRequests = await requestsRes.json()
+          setRequests(myRequests)
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load data')
+      } finally {
+        setLoading(false)
+      }
+    }
+    loadData()
+  }, [])
+
+  const handleRequestSurplus = async (offerId: string) => {
+    try {
+      const res = await fetch(`/api/surplus/${offerId}/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestedQuantity: 1,
+          notes: 'Requesting this surplus offer',
+        }),
+      })
+
+      if (res.ok) {
+        // Reload requests
+        const requestsRes = await fetch('/api/requests/my')
+        if (requestsRes.ok) {
+          const myRequests = await requestsRes.json()
+          setRequests(myRequests)
+        }
+        alert('Request submitted successfully!')
+      } else {
+        const data = await res.json()
+        alert(`Failed: ${data.error}`)
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to request surplus')
+    }
   }
 
-  const qualityScore = {
-    score: 4.5,
-    summary: 'Feedback indicates consistently fresh food and punctual pickups.',
-    tags: ['Fresh produce', 'Good hygiene', 'On-time delivery'],
+  const handleCancelRequest = async (requestId: string) => {
+    try {
+      const res = await fetch(`/api/requests/${requestId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'CANCELLED' }),
+      })
+
+      if (res.ok) {
+        setRequests((prev) => prev.filter((r) => r.id !== requestId))
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to cancel request')
+    }
   }
 
   const filteredOffers = useMemo(() => {
     return surplusOffers.filter((offer) => {
-      const matchesCity = cityFilter === 'All' || offer.city === cityFilter
-      const matchesDiet = dietFilter === 'ALL' || offer.dietary.includes(dietFilter)
-      const matchesTime = timeFilter === 'ALL' || offer.timeframe === timeFilter
-      return matchesCity && matchesDiet && matchesTime
-    }).sort((a, b) => b.matchScore - a.matchScore)
-  }, [cityFilter, dietFilter, timeFilter])
+      const matchesCity =
+        cityFilter === 'All' || offer.organization?.city === cityFilter
+      const matchesDiet = dietFilter === 'ALL' || offer.items.some((item) => item.dietaryTags?.includes(dietFilter))
+      return matchesCity && matchesDiet && offer.status === 'OPEN'
+    })
+  }, [surplusOffers, cityFilter, dietFilter])
 
-  const recommendedOffers = filteredOffers.slice(0, 2)
-  const otherOffers = filteredOffers.slice(2)
-
-  const pendingRequestCount = requestRows.filter((row) => row.status === 'PENDING').length
+  const pendingRequestCount = requests.filter((r) => r.status === 'PENDING').length
   const totalMealsThisMonth = 260
   const totalDonations = 45
 
@@ -191,14 +196,14 @@ export default function RecipientPortal() {
     {
       label: 'Available Surplus Nearby',
       value: filteredOffers.length.toString(),
-      helper: 'Within 10 km',
+      helper: 'Within service area',
       icon: Search,
     },
     {
       label: 'Pending Requests',
       value: pendingRequestCount.toString(),
       helper: 'Awaiting donor approval',
-      icon: ClipboardList,
+      icon: Truck,
     },
     {
       label: 'Meals Received This Month',
@@ -214,6 +219,14 @@ export default function RecipientPortal() {
     },
   ]
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <p className="text-muted-foreground">Loading recipient dashboard...</p>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-[#f7f1e3] py-10 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -224,17 +237,15 @@ export default function RecipientPortal() {
             Discover surplus nearby and request it fast
           </h1>
           <p className="text-[#6b4d3c] max-w-3xl">
-            Track every request from approval to pickup, confirm deliveries, and keep your organization profile verified.
+            Browse available surplus, request what you need, and track deliveries.
           </p>
         </header>
 
-        <Card className="p-5 border border-[#d9c7aa] bg-white/90 space-y-2">
-          <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">Demand forecast</p>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <h2 className="text-2xl font-semibold text-[#4a1f1f]">{demandForecast.range}</h2>
-            <p className="text-sm text-[#6b4d3c]">{demandForecast.insight}</p>
-          </div>
-        </Card>
+        {error && (
+          <Card className="p-4 border border-red-200 bg-red-50 text-sm text-red-700">
+            {error}
+          </Card>
+        )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {summaryCards.map((card) => {
@@ -252,230 +263,161 @@ export default function RecipientPortal() {
           })}
         </div>
 
-        <Card className="p-6 border border-[#d9c7aa] bg-white flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-[#4a1f1f]">Primary Actions</h2>
-            <p className="text-sm text-[#6b4d3c]">Browse surplus or review your active requests.</p>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button className="bg-[#8c3b3c] hover:bg-[#732f30]">Browse Surplus</Button>
-            <Button variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              View My Requests
-            </Button>
-          </div>
-        </Card>
-
+        {/* Browse Surplus */}
         <Card className="p-6 border border-[#d9c7aa] bg-white space-y-5">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-[#4a1f1f]">Browse Surplus</h2>
-              <p className="text-sm text-[#6b4d3c]">Filter by city, pickup window, or dietary tags.</p>
+              <p className="text-sm text-[#6b4d3c]">Filter by city or dietary preferences.</p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <Filter className="w-4 h-4 text-[#6b4d3c]" />
               <select
                 value={cityFilter}
-                onChange={(event) => setCityFilter(event.target.value)}
+                onChange={(e) => setCityFilter(e.target.value)}
                 className="border border-[#d9c7aa] rounded-md px-3 py-2 text-sm bg-white"
               >
                 <option value="All">All cities</option>
+                <option value="Mumbai">Mumbai</option>
                 <option value="Bandra">Bandra</option>
                 <option value="Mahim">Mahim</option>
-                <option value="Worli">Worli</option>
               </select>
               <select
                 value={dietFilter}
-                onChange={(event) => setDietFilter(event.target.value as DietTag | 'ALL')}
+                onChange={(e) => setDietFilter(e.target.value as DietTag | 'ALL')}
                 className="border border-[#d9c7aa] rounded-md px-3 py-2 text-sm bg-white"
               >
-                <option value="ALL">All dietary tags</option>
+                <option value="ALL">All dietary</option>
                 <option value="VEG">Veg</option>
                 <option value="NON_VEG">Non-Veg</option>
                 <option value="VEGAN">Vegan</option>
               </select>
-              <select
-                value={timeFilter}
-                onChange={(event) => setTimeFilter(event.target.value as TimeFilter | 'ALL')}
-                className="border border-[#d9c7aa] rounded-md px-3 py-2 text-sm bg-white"
-              >
-                <option value="ALL">Any time</option>
-                <option value="NOW">Available now</option>
-                <option value="LATER">Later today</option>
-                <option value="TOMORROW">Tomorrow</option>
-              </select>
             </div>
           </div>
 
-          {recommendedOffers.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-[#8c3b3c]" />
-                <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Recommended for you</p>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {recommendedOffers.map((offer) => (
-                  <Card key={offer.id} className="border border-[#d9c7aa] bg-[#fffdf9] p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs uppercase text-[#8c3b3c] tracking-wide">{offer.donor}</p>
-                        <h3 className="text-lg font-semibold text-[#4a1f1f]">{offer.summary}</h3>
-                      </div>
-                      <Badge variant="success">{offer.matchScore > 0.9 ? 'Best Match' : 'High Match'}</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-2 text-sm text-[#6b4d3c]">
-                      <span>{offer.distance} away</span>
-                      <span>•</span>
-                      <span>{offer.city}</span>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {offer.dietary.map((tag) => (
-                        <Badge key={`${offer.id}-${tag}`} variant="outline">
-                          {tag === 'NON_VEG' ? 'Non-veg' : tag === 'VEGAN' ? 'Vegan' : 'Veg'}
-                        </Badge>
-                      ))}
-                      <Badge variant="outline">{offer.storage}</Badge>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button size="sm" className="bg-[#8c3b3c] hover:bg-[#732f30]">
-                        View Details
-                      </Button>
-                      <Button size="sm" variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-                        Request Surplus
-                      </Button>
-                    </div>
-                  </Card>
-                ))}
-              </div>
+          {filteredOffers.length === 0 ? (
+            <p className="text-center text-[#6b4d3c] py-8">No surplus available right now. Check back soon!</p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {filteredOffers.map((offer) => (
+                <Card key={offer.id} className="border border-[#d9c7aa] bg-[#fffdf9] p-5 space-y-3">
+                  <div>
+                    <p className="text-xs uppercase text-[#8c3b3c] tracking-wide">{offer.organization?.name || 'Donor'}</p>
+                    <h3 className="text-lg font-semibold text-[#4a1f1f]">
+                      {offer.items.map((i) => `${i.quantity} ${i.unit} ${i.name}`).join(', ')}
+                    </h3>
+                  </div>
+                  <p className="text-sm text-[#6b4d3c]">{offer.pickupAddress}</p>
+                  <p className="text-sm text-[#6b4d3c]">
+                    {new Date(offer.pickupWindowStart).toLocaleString()}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {offer.items.flatMap((i) => i.dietaryTags || []).map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" className="bg-[#8c3b3c] hover:bg-[#732f30] flex-1">
+                      View Details
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="bg-[#8c3b3c] hover:bg-[#732f30] flex-1"
+                      onClick={() => handleRequestSurplus(offer.id)}
+                    >
+                      Request
+                    </Button>
+                  </div>
+                </Card>
+              ))}
             </div>
           )}
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {otherOffers.map((offer) => (
-              <Card key={offer.id} className="border border-[#d9c7aa] bg-white p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase text-[#8c3b3c] tracking-wide">{offer.donor}</p>
-                    <h3 className="text-lg font-semibold text-[#4a1f1f]">{offer.summary}</h3>
-                  </div>
-                  <Badge variant="secondary">{offer.pickupWindow}</Badge>
-                </div>
-                <div className="flex flex-wrap gap-2 text-sm text-[#6b4d3c]">
-                  <span>{offer.distance} away</span>
-                  <span>•</span>
-                  <span>{offer.city}</span>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {offer.dietary.map((tag) => (
-                    <Badge key={`${offer.id}-${tag}`} variant="outline">
-                      {tag === 'NON_VEG' ? 'Non-veg' : tag === 'VEGAN' ? 'Vegan' : 'Veg'}
-                    </Badge>
-                  ))}
-                  <Badge variant="outline">{offer.storage}</Badge>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" className="bg-[#8c3b3c] hover:bg-[#732f30]">
-                    View Details
-                  </Button>
-                  <Button size="sm" variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-                    Request Surplus
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
         </Card>
 
+        {/* My Requests */}
         <Card className="p-6 border border-[#d9c7aa] bg-white space-y-5">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-[#4a1f1f]">My Requests</h2>
-              <p className="text-sm text-[#6b4d3c]">Track approvals, rejections, and fulfilled donations.</p>
+              <p className="text-sm text-[#6b4d3c]">Track all your surplus requests.</p>
             </div>
             <Truck className="w-5 h-5 text-[#8c3b3c]" />
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-[#6b4d3c]">
-                <tr>
-                  <th className="py-3 font-medium">Surplus summary</th>
-                  <th className="py-3 font-medium">Donor</th>
-                  <th className="py-3 font-medium">Status</th>
-                  <th className="py-3 font-medium">Details</th>
-                  <th className="py-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#f0e3d1]">
-                {requestRows.map((row) => (
-                  <tr key={row.id}>
-                    <td className="py-4 text-[#4a1f1f]">{row.summary}</td>
-                    <td className="py-4 text-[#6b4d3c]">{row.donor}</td>
-                    <td className="py-4">
-                      <Badge
-                        variant={
-                          row.status === 'APPROVED'
-                            ? 'success'
-                            : row.status === 'FULFILLED'
-                              ? 'default'
-                              : row.status === 'REJECTED'
-                                ? 'destructive'
-                                : 'secondary'
-                        }
-                      >
-                        {row.status}
-                      </Badge>
-                    </td>
-                    <td className="py-4 text-sm text-[#6b4d3c]">
-                      {row.expectedPickup ? row.expectedPickup : 'Awaiting update'}
-                      {row.volunteer && (
-                        <div className="mt-1">{row.volunteer}</div>
-                      )}
-                    </td>
-                    <td className="py-4">
-                      <div className="flex flex-wrap gap-2">
-                        {row.status === 'PENDING' && (
-                          <Button size="sm" variant="ghost" className="text-destructive">
-                            Cancel Request
-                          </Button>
-                        )}
-                        <Button size="sm" variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-                          View Details
-                        </Button>
-                        {row.status === 'FULFILLED' && (
-                          <Button size="sm" className="bg-[#8c3b3c] hover:bg-[#732f30]">Confirm Delivery</Button>
-                        )}
-                      </div>
-                    </td>
+
+          {requests.length === 0 ? (
+            <p className="text-center text-[#6b4d3c] py-8">No requests yet. Browse surplus above to get started!</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-[#6b4d3c]">
+                  <tr className="border-b border-[#f0e3d1]">
+                    <th className="py-3 font-medium">Surplus</th>
+                    <th className="py-3 font-medium">Donor</th>
+                    <th className="py-3 font-medium">Status</th>
+                    <th className="py-3 font-medium">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[#f0e3d1]">
+                  {requests.map((row) => (
+                    <tr key={row.id}>
+                      <td className="py-4 text-[#4a1f1f]">
+                        {row.surplus?.items.map((i) => `${i.quantity} ${i.unit} ${i.name}`).join(', ')}
+                      </td>
+                      <td className="py-4 text-[#6b4d3c]">{row.surplus?.organization?.name || 'Unknown'}</td>
+                      <td className="py-4">
+                        <Badge
+                          variant={
+                            row.status === 'APPROVED'
+                              ? 'success'
+                              : row.status === 'FULFILLED'
+                                ? 'default'
+                                : row.status === 'REJECTED'
+                                  ? 'destructive'
+                                  : 'secondary'
+                          }
+                        >
+                          {row.status}
+                        </Badge>
+                      </td>
+                      <td className="py-4">
+                        <div className="flex flex-wrap gap-2">
+                          {row.status === 'PENDING' && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive"
+                              onClick={() => handleCancelRequest(row.id)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
+                            View Details
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
 
+        {/* Delivery & Feedback */}
         <Card className="p-6 border border-[#d9c7aa] bg-white space-y-5">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-[#4a1f1f]">Delivery & Feedback</h2>
               <p className="text-sm text-[#6b4d3c]">
-                Confirm deliveries and leave notes for donors or volunteers.
+                Leave feedback for completed deliveries.
               </p>
             </div>
             <MessageSquare className="w-5 h-5 text-[#8c3b3c]" />
           </div>
-          <Card className="p-4 border border-[#d9c7aa] bg-[#fffdf9] space-y-2">
-            <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">Food quality score</p>
-            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <h3 className="text-2xl font-semibold text-[#4a1f1f]">{qualityScore.score.toFixed(1)} / 5</h3>
-              <p className="text-sm text-[#6b4d3c]">{qualityScore.summary}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {qualityScore.tags.map((tag) => (
-                <Badge key={tag} variant="outline">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-          </Card>
+
           <div className="space-y-4">
             {deliveries.map((delivery) => (
               <div key={delivery.id} className="border border-dashed border-[#e6d2b8] rounded-lg p-4 space-y-3">
@@ -491,8 +433,8 @@ export default function RecipientPortal() {
                 </p>
                 <textarea
                   value={feedbackDraft[delivery.id] ?? delivery.feedback ?? ''}
-                  onChange={(event) =>
-                    setFeedbackDraft((prev) => ({ ...prev, [delivery.id]: event.target.value }))
+                  onChange={(e) =>
+                    setFeedbackDraft((prev) => ({ ...prev, [delivery.id]: e.target.value }))
                   }
                   placeholder="Add feedback or notes..."
                   className="w-full border border-[#d9c7aa] rounded-md px-3 py-2 text-sm bg-white"
@@ -507,40 +449,13 @@ export default function RecipientPortal() {
           </div>
         </Card>
 
-        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-[#4a1f1f]">Impact & Reports</h2>
-              <p className="text-sm text-[#6b4d3c]">Download reports to share with partners and funders.</p>
-            </div>
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              <Download className="w-4 h-4" />
-              Export report
-            </Button>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {impactCards.map((card) => {
-              const Icon = card.icon
-              return (
-                <Card key={card.label} className="p-5 border border-[#d9c7aa] bg-[#fffdf9] flex flex-col gap-2">
-                  <div className="flex items-center justify-between text-[#6b4d3c] text-sm">
-                    {card.label}
-                    <Icon className="w-4 h-4 text-[#8c3b3c]" />
-                  </div>
-                  <p className="text-3xl font-semibold text-[#4a1f1f]">{card.value}</p>
-                  <p className="text-sm text-[#6b4d3c]">{card.helper}</p>
-                </Card>
-              )
-            })}
-          </div>
-        </Card>
-
+        {/* Org Profile */}
         <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-[#4a1f1f]">Org Profile</h2>
               <p className="text-sm text-[#6b4d3c]">
-                Keep address, storage capability, and operating hours up to date to get matched faster.
+                Keep your organization details up to date.
               </p>
             </div>
             <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
@@ -568,18 +483,14 @@ export default function RecipientPortal() {
               <p className="text-sm text-[#6b4d3c]">Operating hours</p>
               <p className="font-medium text-[#4a1f1f]">Mon – Sat · 9:00 AM – 9:00 PM</p>
             </div>
-            <div className="space-y-1">
-              <p className="text-sm text-[#6b4d3c]">Notification preference</p>
-              <p className="font-medium text-[#4a1f1f]">Email + SMS</p>
-            </div>
           </div>
           <div className="flex flex-wrap gap-3">
             <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              <Building2 className="w-4 h-4" />
+              <Building2 className="w-4 h-4 mr-2" />
               Update address
             </Button>
             <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              <CheckCircle2 className="w-4 h-4" />
+              <CheckCircle2 className="w-4 h-4 mr-2" />
               Manage verification
             </Button>
           </div>

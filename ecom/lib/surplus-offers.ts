@@ -28,7 +28,7 @@ export interface SurplusOfferInput {
     longitude: number
   } | null
   status?: SurplusStatus
-  expiryDateTime: string | Date
+  expiryDateTime?: string | Date
 }
 
 export interface SurplusOfferDocument {
@@ -57,7 +57,10 @@ export interface SurplusOfferResponse extends Omit<SurplusOfferDocument, '_id' |
   organization?: ReturnType<typeof mapOrganization>
 }
 
-function toDate(value: string | Date, field: string) {
+function toDate(value: string | Date, field: string): Date {
+  if (!value) {
+    throw new Error(`${field} is required`)
+  }
   const date = value instanceof Date ? value : new Date(value)
   if (Number.isNaN(date.getTime())) {
     throw new Error(`Invalid date provided for ${field}`)
@@ -124,6 +127,9 @@ export async function createSurplusOffer(
   const surplus = await getCollection<SurplusOfferDocument>('surplus_offers')
   const now = new Date()
 
+  // Default expiry to 7 days from now if not provided
+  const defaultExpiry = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+
   const doc: SurplusOfferDocument = {
     _id: new ObjectId(),
     organizationId: organization._id,
@@ -135,7 +141,7 @@ export async function createSurplusOffer(
     pickupAddress: payload.pickupAddress || organization.address,
     geoLocation: normalizeGeoLocation(payload.geoLocation) ?? normalizeGeoLocation(organization.geoLocation) ?? null,
     status: payload.status && SURPLUS_STATUSES.includes(payload.status) ? payload.status : 'OPEN',
-    expiryDateTime: toDate(payload.expiryDateTime, 'expiryDateTime'),
+    expiryDateTime: payload.expiryDateTime ? toDate(payload.expiryDateTime, 'expiryDateTime') : defaultExpiry,
     createdAt: now,
     updatedAt: now,
   }

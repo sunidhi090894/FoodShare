@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { listSurplusOffersForUser, SURPLUS_STATUSES, type SurplusStatus } from '@/lib/surplus-offers'
 import { getUserDocumentById } from '@/lib/users'
+import { listRequestsForUser } from '@/lib/surplus-requests'
 import { cookies } from 'next/headers'
 import { ObjectId } from 'mongodb'
 
 export const dynamic = 'force-dynamic'
 
-export const GET = async (req: NextRequest) => {
+export const GET = async (_req: NextRequest) => {
   try {
     const cookieStore = await cookies()
     const userId = cookieStore.get('userId')?.value
@@ -19,14 +19,11 @@ export const GET = async (req: NextRequest) => {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    const statusParam = req.nextUrl.searchParams.get('status')?.toUpperCase() as SurplusStatus | undefined
-    const status = statusParam && SURPLUS_STATUSES.includes(statusParam) ? statusParam : undefined
-
-    const offers = await listSurplusOffersForUser(new ObjectId(userId), status)
-    return NextResponse.json(offers)
+    const requests = await listRequestsForUser(new ObjectId(userId))
+    return NextResponse.json(requests)
   } catch (error) {
-    console.error('Error listing surplus offers', error)
-    const message = error instanceof Error ? error.message : 'Unable to list offers'
+    console.error('Error listing requests', error)
+    const message = error instanceof Error ? error.message : 'Unable to list requests'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

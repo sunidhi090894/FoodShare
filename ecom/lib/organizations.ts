@@ -22,12 +22,12 @@ export interface OrganizationDocument {
   type: OrganizationType
   address: string
   city: string
-  pincode: string
+  pincode?: string
   geoLocation?: GeoLocation | null
   storageCapabilities: string[]
   serviceHours: ServiceWindow[]
-  contactPerson: string
-  contactPhone: string
+  contactPerson?: string
+  contactPhone?: string
   verified: boolean
   createdByUserId: ObjectId
   createdAt: Date
@@ -36,15 +36,15 @@ export interface OrganizationDocument {
 
 export interface OrganizationPayload {
   name: string
-  type: OrganizationType
+  type?: OrganizationType
   address: string
   city: string
-  pincode: string
+  pincode?: string
   geoLocation?: GeoLocation | null
   storageCapabilities?: string[]
   serviceHours?: ServiceWindow[]
-  contactPerson: string
-  contactPhone: string
+  contactPerson?: string
+  contactPhone?: string
 }
 
 export type OrganizationUpdatePayload = Partial<OrganizationPayload> & {
@@ -109,7 +109,7 @@ function sanitizePayload<T extends Partial<OrganizationPayload>>(
 export async function createOrganizationForUser(user: UserDocument, payload: OrganizationPayload) {
   const organizations = await getCollection<OrganizationDocument>('organizations')
   const now = new Date()
-  const data = sanitizePayload(payload)
+  const data = sanitizePayload(payload, 'DONOR')
 
   const document: OrganizationDocument = {
     _id: new ObjectId(),
@@ -130,7 +130,7 @@ export async function createOrganizationForUser(user: UserDocument, payload: Org
   }
 
   await organizations.insertOne(document)
-  await updateUserOrganizationLink(user._id, document._id, data.type as UserRole)
+  await updateUserOrganizationLink(user._id, document._id, data.type as UserRole, data.name)
 
   return mapOrganization(document)
 }

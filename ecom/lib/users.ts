@@ -106,7 +106,8 @@ export async function getUserDocumentById(id: string | ObjectId) {
 export async function updateUserOrganizationLink(
   userId: ObjectId,
   organizationId: ObjectId | null,
-  role?: UserRole | null
+  role?: UserRole | null,
+  organizationName?: string | null
 ) {
   const users = await getCollection<UserDocument>('users')
   const updates: Record<string, unknown> = {
@@ -116,6 +117,10 @@ export async function updateUserOrganizationLink(
 
   if (role) {
     updates.role = role
+  }
+
+  if (organizationName) {
+    updates.organization = organizationName
   }
 
   await users.updateOne(

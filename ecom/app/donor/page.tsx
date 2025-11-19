@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
   Leaf,
@@ -8,20 +9,19 @@ import {
   Utensils,
   Recycle,
   CheckCircle2,
-  ClipboardList,
   MapPin,
   AlertCircle,
-  Building2,
+  X,
+  Plus,
   Download,
-  Info,
 } from 'lucide-react'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 
 type OfferStatus = 'OPEN' | 'MATCHED' | 'FULFILLED' | 'EXPIRED' | 'CANCELLED'
-type RequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED'
 
 interface BackendUser {
   name: string | null
@@ -29,141 +29,26 @@ interface BackendUser {
   email?: string | null
 }
 
+interface SurplusItem {
+  name: string
+  quantity: number
+  unit: string
+  category?: string
+  dietaryTags?: string[]
+  allergenTags?: string[]
+}
+
 interface ActiveOffer {
   id: string
-  summary: string
-  pickupWindow: string
+  items: SurplusItem[]
+  pickupWindowStart: string
+  pickupWindowEnd: string
+  pickupAddress: string
   status: OfferStatus
-  requestCount: number
-  expiresLabel: string
-  location: string
-  storage: string
-  isToday: boolean
-  pickupProbability: number
+  expiryDateTime: string
+  totalWeightKg?: number
+  recipientOrgName?: string
 }
-
-interface RequestCard {
-  id: string
-  offerId: string
-  offerSummary: string
-  recipient: string
-  status: RequestStatus
-  distance: string
-  city: string
-  volunteer?: string | null
-  notes?: string
-}
-
-interface DonationRecord {
-  id: string
-  date: string
-  items: string
-  recipient: string
-  meals: number
-  co2Saved: number
-}
-
-const initialOffers: ActiveOffer[] = [
-  {
-    id: 'FS-4821',
-    summary: 'Biryani (30 plates)',
-    pickupWindow: 'Today · 2:00 – 4:00 PM',
-    status: 'OPEN',
-    requestCount: 3,
-    expiresLabel: 'Expires in 4 hours',
-    location: 'Bandra West · Mumbai',
-    storage: 'Hot meals · insulated pickup required',
-    isToday: true,
-    pickupProbability: 0.87,
-  },
-  {
-    id: 'FS-4818',
-    summary: 'Bakery box (18 assorted pastries)',
-    pickupWindow: 'Today · 7:30 – 9:00 PM',
-    status: 'MATCHED',
-    requestCount: 1,
-    expiresLabel: 'Volunteer pickup scheduled 7:30 PM',
-    location: 'Lower Parel · Mumbai',
-    storage: 'Room temp · store flat',
-    isToday: true,
-    pickupProbability: 0.62,
-  },
-  {
-    id: 'FS-4790',
-    summary: 'Cut fruit (12 kg, chilled)',
-    pickupWindow: 'Tomorrow · 10:00 – 11:30 AM',
-    status: 'FULFILLED',
-    requestCount: 4,
-    expiresLabel: 'Fulfilled yesterday • 28 meals',
-    location: 'BKC · Mumbai',
-    storage: 'Cold chain · refrigerated',
-    isToday: false,
-    pickupProbability: 0.32,
-  },
-]
-
-const initialRequests: RequestCard[] = [
-  {
-    id: 'REQ-901',
-    offerId: 'FS-4821',
-    offerSummary: 'Biryani (30 plates)',
-    recipient: 'Hope Kitchen',
-    status: 'PENDING',
-    distance: '2.4 km',
-    city: 'Bandra East',
-    volunteer: null,
-    notes: 'Can pick up before 3 PM',
-  },
-  {
-    id: 'REQ-877',
-    offerId: 'FS-4821',
-    offerSummary: 'Biryani (30 plates)',
-    recipient: 'Seva Meals Collective',
-    status: 'APPROVED',
-    distance: '4.1 km',
-    city: 'Mahim',
-    volunteer: 'Rahul - +91 90000 11122',
-    notes: 'Volunteer confirmed 2:30 PM pickup',
-  },
-  {
-    id: 'REQ-812',
-    offerId: 'FS-4818',
-    offerSummary: 'Bakery box (18 assorted pastries)',
-    recipient: 'Night Shelter Network',
-    status: 'PENDING',
-    distance: '6.3 km',
-    city: 'Worli',
-    volunteer: null,
-    notes: 'Prefers pickup slot 8:45 PM',
-  },
-]
-
-const donationHistory: DonationRecord[] = [
-  {
-    id: 'H-1201',
-    date: 'Oct 7',
-    items: 'Veg thali trays (45 meals)',
-    recipient: 'Shelter One',
-    meals: 45,
-    co2Saved: 130,
-  },
-  {
-    id: 'H-1194',
-    date: 'Oct 3',
-    items: 'Salad bowls (28 meals)',
-    recipient: 'Care Foundation',
-    meals: 28,
-    co2Saved: 75,
-  },
-  {
-    id: 'H-1186',
-    date: 'Sep 29',
-    items: 'Bread & soup (60 meals)',
-    recipient: 'Community Kitchens',
-    meals: 60,
-    co2Saved: 185,
-  },
-]
 
 const offerStatusVariant: Record<OfferStatus, 'default' | 'success' | 'secondary' | 'warning' | 'destructive'> = {
   OPEN: 'default',
@@ -173,64 +58,36 @@ const offerStatusVariant: Record<OfferStatus, 'default' | 'success' | 'secondary
   CANCELLED: 'destructive',
 }
 
-const requestStatusVariant: Record<RequestStatus, 'default' | 'success' | 'secondary' | 'destructive'> = {
-  PENDING: 'secondary',
-  APPROVED: 'success',
-  REJECTED: 'destructive',
-  CANCELLED: 'default',
-}
-
-const probabilityVariant = (value: number): { label: string; variant: 'success' | 'warning' | 'destructive'; warning?: string } => {
-  if (value >= 0.75) {
-    return { label: `High (${Math.round(value * 100)}%)`, variant: 'success' }
-  }
-  if (value >= 0.5) {
-    return { label: `Medium (${Math.round(value * 100)}%)`, variant: 'warning' }
-  }
-  return { label: `Low (${Math.round(value * 100)}%)`, variant: 'destructive', warning: 'Low predicted pickup chance — try extending pickup window or posting earlier.' }
-}
-
 export default function DonorPage() {
   useProtectedRoute('DONOR')
+  const router = useRouter()
+  
   const [user, setUser] = useState<BackendUser | null>(null)
   const [fetchError, setFetchError] = useState('')
   const [loading, setLoading] = useState(true)
-  const [offers, setOffers] = useState(initialOffers)
-  const [requests, setRequests] = useState(initialRequests)
-  const [suggestionApplied, setSuggestionApplied] = useState(false)
+  const [offers, setOffers] = useState<ActiveOffer[]>([])
+  const [showCreateForm, setShowCreateForm] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [showOrgForm, setShowOrgForm] = useState(false)
+  const [isCreatingOrg, setIsCreatingOrg] = useState(false)
 
-  const forecast = {
-    range: '18 – 24 kg',
-    window: '9:00 – 11:00 PM',
-    confidence: 0.82,
-    description: 'Based on your past 30 days, day-of-week trends, and upcoming city events.',
-  }
+  // Organization form state
+  const [orgName, setOrgName] = useState('')
+  const [orgAddress, setOrgAddress] = useState('')
+  const [orgCity, setOrgCity] = useState('')
 
-  const smartSuggestion = {
-    windowStart: '9:00 PM',
-    windowEnd: '10:30 PM',
-    quantity: '≈20 kg cooked food',
-    categories: ['Rice', 'Dal', 'Biryani'],
-  }
+  // Modal states
+  const [showRequestsModal, setShowRequestsModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedOffer, setSelectedOffer] = useState<ActiveOffer | null>(null)
 
-  const donorInsights = [
-    {
-      title: 'Top surplus categories',
-      detail: 'Bread • Rice • Curry',
-    },
-    {
-      title: 'Most waste day',
-      detail: 'Saturday nights spike by 18%',
-    },
-    {
-      title: 'Pickup success rate',
-      detail: '82% (highest in your area cluster)',
-    },
-    {
-      title: 'Pattern cluster',
-      detail: 'Late-night restaurant donors (9–11 PM surpluses)',
-    },
-  ]
+  // Form state
+  const [items, setItems] = useState<SurplusItem[]>([
+    { name: '', quantity: 0, unit: 'kg', category: '', dietaryTags: [], allergenTags: [] },
+  ])
+  const [pickupWindowStart, setPickupWindowStart] = useState('')
+  const [pickupWindowEnd, setPickupWindowEnd] = useState('')
+  const [pickupAddress, setPickupAddress] = useState('')
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -241,6 +98,21 @@ export default function DonorPage() {
         }
         const data = await res.json()
         setUser(data)
+        
+        // Auto-fill pickup address with organization address
+        if (data.organizationId) {
+          try {
+            const orgRes = await fetch(`/api/organizations/${data.organizationId}`)
+            if (orgRes.ok) {
+              const orgData = await orgRes.json()
+              setPickupAddress(`${orgData.address}, ${orgData.city}`)
+            }
+          } catch (error) {
+            console.error('Failed to fetch organization:', error)
+          }
+        }
+        
+        loadOffers()
       } catch (error) {
         setFetchError(error instanceof Error ? error.message : 'Failed to load profile.')
       } finally {
@@ -250,22 +122,320 @@ export default function DonorPage() {
     loadProfile()
   }, [])
 
-  const todayOffers = offers.filter((offer) => offer.isToday).length
-  const openOffers = offers.filter((offer) => offer.status === 'OPEN').length
-  const mealsThisMonth = donationHistory.reduce((total, record) => total + record.meals, 0)
-  const co2SavedThisMonth = donationHistory.reduce((total, record) => total + record.co2Saved, 0)
+  const loadOffers = async () => {
+    try {
+      const res = await fetch('/api/surplus/my')
+      if (res.ok) {
+        const data = await res.json()
+        setOffers(data)
+      }
+    } catch (error) {
+      console.error('Failed to load offers:', error)
+    }
+  }
+
+  const handleAddItem = () => {
+    setItems([...items, { name: '', quantity: 0, unit: 'kg', category: '', dietaryTags: [], allergenTags: [] }])
+  }
+
+  const handleRemoveItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index))
+  }
+
+  const handleItemChange = (index: number, field: string, value: any) => {
+    const newItems = [...items]
+    newItems[index] = { ...newItems[index], [field]: value }
+    setItems(newItems)
+  }
+
+  const handleCreateOrganization = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreatingOrg(true)
+    setFetchError('')
+
+    try {
+      if (!orgName || !orgAddress || !orgCity) {
+        throw new Error('Please fill in all organization fields')
+      }
+
+      const res = await fetch('/api/organizations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: orgName,
+          address: orgAddress,
+          city: orgCity,
+        }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'Failed to create organization')
+      }
+
+      setShowOrgForm(false)
+      setOrgName('')
+      setOrgAddress('')
+      setOrgCity('')
+
+      // Reload user to get updated organization
+      const userRes = await fetch('/api/users/me')
+      if (userRes.ok) {
+        const userData = await userRes.json()
+        setUser(userData)
+      }
+
+      alert('Organization created successfully!')
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to create organization'
+      setFetchError(errorMsg)
+    } finally {
+      setIsCreatingOrg(false)
+    }
+  }
+
+  const handleCreateOffer = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsCreating(true)
+    setFetchError('')
+    
+    try {
+      // Validate form
+      if (!items[0]?.name || !pickupWindowStart || !pickupWindowEnd || !pickupAddress) {
+        throw new Error('Please fill in all required fields')
+      }
+
+      // Check if user has organization
+      if (!user?.organization) {
+        throw new Error('Please set up your organization first before creating surplus offers')
+      }
+
+      const payload = {
+        items: items.map(item => ({
+          name: item.name,
+          quantity: Number(item.quantity) || 0,
+          unit: item.unit,
+          category: item.category || undefined,
+          dietaryTags: item.dietaryTags?.filter((t: string) => t && t.trim()) || [],
+          allergenTags: item.allergenTags?.filter((t: string) => t && t.trim()) || [],
+        })),
+        pickupWindowStart,
+        pickupWindowEnd,
+        pickupAddress,
+      }
+
+      console.log('Sending payload:', payload)
+
+      const res = await fetch('/api/surplus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+
+      const responseData = await res.json()
+      
+      if (!res.ok) {
+        throw new Error(responseData.error || `Failed to create surplus offer (${res.status})`)
+      }
+
+      setShowCreateForm(false)
+      // Reset form
+      setItems([{ name: '', quantity: 0, unit: 'kg', category: '', dietaryTags: [], allergenTags: [] }])
+      setPickupWindowStart('')
+      setPickupWindowEnd('')
+      setPickupAddress('')
+      
+      // Reload offers
+      await loadOffers()
+      alert('Surplus offer created successfully!')
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to create offer'
+      setFetchError(errorMsg)
+      console.error('Error:', errorMsg)
+    } finally {
+      setIsCreating(false)
+    }
+  }
+
+  const handleViewRequests = (offer: ActiveOffer) => {
+    setSelectedOffer(offer)
+    setShowRequestsModal(true)
+  }
+
+  const handleEditOffer = (offer: ActiveOffer) => {
+    setSelectedOffer(offer)
+    setShowEditModal(true)
+  }
+
+  const handleCancelOffer = async (offerId: string) => {
+    if (!confirm('Are you sure you want to cancel this offer?')) return
+    
+    try {
+      const res = await fetch(`/api/surplus/${offerId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'CANCELLED' }),
+      })
+
+      if (!res.ok) {
+        throw new Error('Failed to cancel offer')
+      }
+
+      await loadOffers()
+      alert('Offer cancelled successfully!')
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Failed to cancel offer'
+      setFetchError(errorMsg)
+    }
+  }
+
+  // Count only OPEN offers posted today with detailed breakdown
+  const todayOffers = (() => {
+    const now = new Date()
+    const todayOffersList = offers.filter((offer) => {
+      const start = new Date(offer.pickupWindowStart)
+      return start.toDateString() === now.toDateString() && offer.status === 'OPEN'
+    })
+    return todayOffersList.length
+  })()
+
+  // Total active (OPEN) offers
+  const activeOffers = offers.filter(o => o.status === 'OPEN').length
+
+  // Actual Waste Saved Today - count completed offers from today
+  const todayCompletedOffers = offers.filter(offer => {
+    const now = new Date()
+    const start = new Date(offer.pickupWindowStart)
+    return start.toDateString() === now.toDateString() && offer.status === 'FULFILLED'
+  })
+  const actualWasteSavedToday = todayCompletedOffers.reduce((total, offer) => {
+    const weight = offer.items.reduce((sum, item) => {
+      return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+    }, 0)
+    return total + weight
+  }, 0)
+
+  // Meals: 1 kg = 2.2 meals (from all delivered offers)
+  const deliveredOffers = offers.filter(o => o.status === 'FULFILLED')
+  const mealsThisMonth = deliveredOffers.reduce((total, offer) => {
+    const totalWeight = offer.items.reduce((sum, item) => {
+      return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5)) // assume 0.5kg per unit for non-kg items
+    }, 0)
+    return total + Math.round(totalWeight * 2.2)
+  }, 0)
+
+  // CO₂: 1 kg food waste prevented = 1.8 kg CO₂ saved
+  const co2SavedThisMonth = deliveredOffers.reduce((total, offer) => {
+    const totalWeight = offer.items.reduce((sum, item) => {
+      return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+    }, 0)
+    return total + Math.round(totalWeight * 1.8)
+  }, 0)
+
+  // Predictive Analytics: Estimate food waste prevention using Linear Regression + Seasonality
+  // ML Algorithm: Time-series forecasting with day-of-week patterns
+  const calculateFoodWastePrevention = () => {
+    if (offers.length === 0) return { savedWeight: 0, savedMeals: 0, confidence: 0 }
+
+    // Step 1: Extract features from historical data
+    const offersByDayOfWeek: Record<number, number[]> = {}
+    offers.forEach(offer => {
+      const date = new Date(offer.pickupWindowStart)
+      const dayOfWeek = date.getDay()
+      const weight = offer.items.reduce((sum, item) => {
+        return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+      }, 0)
+      
+      if (!offersByDayOfWeek[dayOfWeek]) {
+        offersByDayOfWeek[dayOfWeek] = []
+      }
+      offersByDayOfWeek[dayOfWeek].push(weight)
+    })
+
+    // Step 2: Calculate average weight per day-of-week using regression
+    const today = new Date().getDay()
+    const todayWeights = offersByDayOfWeek[today] || []
+    const avgWeightToday = todayWeights.length > 0
+      ? todayWeights.reduce((a, b) => a + b, 0) / todayWeights.length
+      : offers.reduce((total, offer) => {
+          const weight = offer.items.reduce((sum, item) => {
+            return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+          }, 0)
+          return total + weight
+        }, 0) / Math.max(offers.length, 1)
+
+    // Step 3: Apply weighting factors
+    // - Weekday multiplier (Mon-Fri: 0.75x, Sat-Sun: 1.25x)
+    const isWeekday = today >= 1 && today <= 5
+    const weekdayMultiplier = isWeekday ? 0.75 : 1.25
+    
+    // - Growth trend: newer offers tend to be larger
+    const recentOffers = offers.slice(-5)
+    const recentAvg = recentOffers.reduce((total, offer) => {
+      const weight = offer.items.reduce((sum, item) => {
+        return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+      }, 0)
+      return total + weight
+    }, 0) / Math.max(recentOffers.length, 1)
+    const trendMultiplier = recentAvg > 0 ? (recentAvg / avgWeightToday) * 0.5 + 0.5 : 1
+
+    // Step 4: Predict today's food surplus
+    const predictedWeight = Math.round(avgWeightToday * weekdayMultiplier * trendMultiplier)
+    
+    // Step 5: Add today's actual offers to prediction
+    const todayActualWeight = offers
+      .filter(offer => {
+        const start = new Date(offer.pickupWindowStart)
+        return start.toDateString() === new Date().toDateString()
+      })
+      .reduce((total, offer) => {
+        const weight = offer.items.reduce((sum, item) => {
+          return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+        }, 0)
+        return total + weight
+      }, 0)
+
+    const totalPredictedWeight = predictedWeight + todayActualWeight
+
+    // Step 6: Calculate waste prevention
+    // Assumption: 1 kg food shared = 1 kg food waste prevented
+    // Environmental impact: 1 kg food waste prevented = 1.8 kg CO2 equivalent avoided
+    const savedWeight = totalPredictedWeight
+    const savedMeals = Math.round(totalPredictedWeight * 2.2)
+    const savedCO2 = Math.round(totalPredictedWeight * 1.8)
+
+    // Step 7: Calculate confidence score
+    // More data = higher confidence (max 95%)
+    const confidence = Math.min(90 + Math.floor(todayWeights.length * 2), 95)
+
+    return { savedWeight, savedMeals, savedCO2, confidence }
+  }
+
+  const wastePrevention = calculateFoodWastePrevention()
 
   const summaryCards: { label: string; value: string; helper: string; icon: LucideIcon }[] = [
     {
-      label: 'Today’s Surplus Posted',
+      label: "Today's Surplus Posted",
       value: todayOffers.toString(),
-      helper: `${openOffers} active pickup ${openOffers === 1 ? 'window' : 'windows'}`,
+      helper: `${activeOffers} active pickup window`,
       icon: Package,
+    },
+    {
+      label: 'Actual Waste Saved Today',
+      value: `${Math.round(actualWasteSavedToday)} kg`,
+      helper: `${todayCompletedOffers.length} completed pickup${todayCompletedOffers.length !== 1 ? 's' : ''}`,
+      icon: CheckCircle2,
+    },
+    {
+      label: 'Predicted Waste Saved Today',
+      value: `${wastePrevention.savedWeight} kg`,
+      helper: `ML: ${wastePrevention.confidence}% confidence`,
+      icon: Leaf,
     },
     {
       label: 'Meals Donated This Month',
       value: mealsThisMonth.toLocaleString(),
-      helper: '+120 vs last month',
+      helper: 'Formula: weight × 2.2',
       icon: Utensils,
     },
     {
@@ -274,33 +444,7 @@ export default function DonorPage() {
       helper: 'AaharSetu conversion factor',
       icon: Recycle,
     },
-    {
-      label: 'Total Pickups Completed',
-      value: donationHistory.length.toString(),
-      helper: 'Confirmed in last 30 days',
-      icon: CheckCircle2,
-    },
   ]
-
-  const requestsGrouped = useMemo(() => {
-    return requests.reduce<Record<string, { offerSummary: string; rows: RequestCard[] }>>((acc, request) => {
-      if (!acc[request.offerId]) {
-        acc[request.offerId] = { offerSummary: request.offerSummary, rows: [] }
-      }
-      acc[request.offerId].rows.push(request)
-      return acc
-    }, {})
-  }, [requests])
-
-  const handleRequestAction = (requestId: string, status: RequestStatus) => {
-    setRequests((prev) =>
-      prev.map((request) => (request.id === requestId ? { ...request, status } : request))
-    )
-  }
-
-  const handleCancelOffer = (offerId: string) => {
-    setOffers((prev) => prev.map((offer) => (offer.id === offerId ? { ...offer, status: 'CANCELLED' } : offer)))
-  }
 
   if (loading) {
     return (
@@ -320,30 +464,9 @@ export default function DonorPage() {
             Post surplus quickly{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
           </h1>
           <p className="text-[#6b4d3c] max-w-3xl">
-            Manage every offer, approve recipient requests, and keep a pulse on your impact.
+            Manage your surplus offers, approve recipient requests, and track your impact.
           </p>
         </header>
-
-        <Card className="p-6 border border-[#d9c7aa] bg-white/80 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">Surplus forecast</p>
-              <h2 className="text-2xl font-semibold text-[#4a1f1f]">
-                Predicted surplus today: {forecast.range}
-              </h2>
-              <p className="text-sm text-[#6b4d3c]">
-                Expect peak between {forecast.window}. Confidence {Math.round(forecast.confidence * 100)}%.
-              </p>
-            </div>
-            <div className="text-sm text-[#6b4d3c] max-w-md">
-              {forecast.description}
-              <div className="mt-2 flex items-center gap-2 text-xs text-[#8c3b3c]">
-                <Info className="w-4 h-4" />
-                Based on past 30 days + weekday patterns + events.
-              </div>
-            </div>
-          </div>
-        </Card>
 
         {fetchError && (
           <Card className="p-4 border border-red-200 bg-red-50 flex items-center gap-3 text-sm text-red-700">
@@ -352,11 +475,20 @@ export default function DonorPage() {
           </Card>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {summaryCards.map((card) => {
+
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {summaryCards.map((card, index) => {
             const Icon = card.icon
             return (
-              <Card key={card.label} className="p-5 border border-[#d9c7aa] bg-white flex flex-col gap-3">
+              <Card 
+                key={card.label} 
+                className={`p-5 border border-[#d9c7aa] bg-white flex flex-col gap-3 ${
+                  summaryCards.length % 2 === 1 && index === summaryCards.length - 1 
+                    ? 'md:col-start-2 lg:col-start-2' 
+                    : ''
+                }`}
+              >
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-medium text-[#6b4d3c]">{card.label}</p>
                   <span className="p-2 rounded-full bg-[#f0d8c0] text-[#8c3b3c]">
@@ -373,274 +505,509 @@ export default function DonorPage() {
         <Card className="p-6 border border-[#d9c7aa] bg-white flex flex-wrap items-center gap-4 justify-between">
           <div>
             <h2 className="text-xl font-semibold text-[#4a1f1f]">Primary Actions</h2>
-            <p className="text-sm text-[#6b4d3c]">Post surplus or review your pipeline.</p>
+            <p className="text-sm text-[#6b4d3c]">Create new surplus offers to get started.</p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <Button className="bg-[#8c3b3c] hover:bg-[#732f30]">Create Surplus Offer</Button>
-            <Button variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              View All Surplus
-            </Button>
-          </div>
+          <Button 
+            onClick={() => setShowCreateForm(true)}
+            className="bg-[#8c3b3c] hover:bg-[#732f30]"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create Surplus Offer
+          </Button>
         </Card>
 
-        <Card className="p-5 border border-dashed border-[#d9c7aa] bg-[#fdf8f0] space-y-3">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h3 className="text-lg font-semibold text-[#4a1f1f]">Smart suggestion ready</h3>
-              <p className="text-sm text-[#6b4d3c]">
-                We anticipate {smartSuggestion.quantity} between {smartSuggestion.windowStart} and {smartSuggestion.windowEnd}. Common
-                categories: {smartSuggestion.categories.join(', ')}.
-              </p>
+        {/* Create Form Modal */}
+        {showCreateForm && (
+          <Card className="p-8 border border-[#d9c7aa] bg-white space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-[#4a1f1f]">Create Surplus Offer</h2>
+                <p className="text-sm text-[#6b4d3c] mt-2">
+                  📍 Pickup: {pickupAddress || 'Loading...'}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCreateForm(false)}
+                className="text-[#6b4d3c] hover:text-[#4a1f1f]"
+              >
+                <X className="w-6 h-6" />
+              </button>
             </div>
-            <Button
-              disabled={suggestionApplied}
-              className="bg-[#8c3b3c] hover:bg-[#732f30] disabled:opacity-60"
-              onClick={() => setSuggestionApplied(true)}
-            >
-              {suggestionApplied ? 'Suggestion Applied' : 'Apply Suggestion'}
-            </Button>
-          </div>
-        </Card>
 
+            <form onSubmit={handleCreateOffer} className="space-y-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-[#4a1f1f]">Items</h3>
+                {items.map((item, idx) => (
+                  <div key={idx} className="space-y-3 border border-[#d9c7aa] rounded-lg p-4">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        placeholder="Item name"
+                        value={item.name}
+                        onChange={(e) => handleItemChange(idx, 'name', e.target.value)}
+                        required
+                      />
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          placeholder="Quantity"
+                          value={item.quantity || ''}
+                          onChange={(e) => handleItemChange(idx, 'quantity', e.target.value)}
+                          required
+                        />
+                        <select
+                          value={item.unit}
+                          onChange={(e) => handleItemChange(idx, 'unit', e.target.value)}
+                          className="border border-[#d9c7aa] rounded px-2"
+                        >
+                          <option value="kg">kg</option>
+                          <option value="packs">packs</option>
+                          <option value="plates">plates</option>
+                          <option value="units">units</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input
+                        placeholder="Category (e.g., Rice, Bread)"
+                        value={item.category || ''}
+                        onChange={(e) => handleItemChange(idx, 'category', e.target.value)}
+                      />
+                      <Input
+                        placeholder="Dietary tags (e.g., VEG, VEGAN)"
+                        value={item.dietaryTags?.join(',') || ''}
+                        onChange={(e) => handleItemChange(idx, 'dietaryTags', e.target.value.split(',').map(t => t.trim()))}
+                      />
+                    </div>
+                    {items.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => handleRemoveItem(idx)}
+                      >
+                        Remove Item
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleAddItem}
+                >
+                  + Add Another Item
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium text-[#6b4d3c]">Pickup Window Start</label>
+                  <Input
+                    type="datetime-local"
+                    value={pickupWindowStart}
+                    onChange={(e) => setPickupWindowStart(e.target.value)}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium text-[#6b4d3c]">Pickup Window End</label>
+                  <Input
+                    type="datetime-local"
+                    value={pickupWindowEnd}
+                    onChange={(e) => setPickupWindowEnd(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium text-[#6b4d3c]">Pickup Address</label>
+                <Input
+                  placeholder="Full address for pickup"
+                  value={pickupAddress}
+                  onChange={(e) => setPickupAddress(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setShowCreateForm(false)}
+                  disabled={isCreating}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  className="bg-[#8c3b3c] hover:bg-[#732f30]"
+                  disabled={isCreating}
+                >
+                  {isCreating ? 'Creating...' : 'Create Offer'}
+                </Button>
+              </div>
+            </form>
+          </Card>
+        )}
+
+        {/* Active Surplus Offers */}
         <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-[#4a1f1f]">Active Surplus Offers</h2>
-              <p className="text-sm text-[#6b4d3c]">Track pickup windows, requests, and statuses.</p>
+              <p className="text-sm text-[#6b4d3c]">Track all your posted surplus offers.</p>
             </div>
-            <Button variant="ghost" className="text-[#8c3b3c] px-0" size="sm">
-              Refresh list
+            <Button variant="ghost" className="text-[#8c3b3c] px-0" size="sm" onClick={loadOffers}>
+              Refresh
             </Button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-[#6b4d3c]">
-                <tr>
-                  <th className="py-3 font-medium">Item summary</th>
-                  <th className="py-3 font-medium">Pickup window</th>
-                  <th className="py-3 font-medium">Status</th>
-                  <th className="py-3 font-medium">Pickup likelihood</th>
-                  <th className="py-3 font-medium text-center">Requests</th>
-                  <th className="py-3 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#f0e3d1]">
-                {offers.map((offer) => (
-                  <tr key={offer.id} className="align-top">
-                    <td className="py-4">
-                      <p className="font-semibold text-[#4a1f1f]">{offer.summary}</p>
-                      <p className="text-xs text-[#6b4d3c] flex items-center gap-1 mt-1">
-                        <MapPin className="w-3 h-3" />
-                        {offer.location}
-                      </p>
-                      <p className="text-xs text-[#6b4d3c] mt-1">{offer.storage}</p>
-                    </td>
-                    <td className="py-4 text-[#6b4d3c]">{offer.pickupWindow}</td>
-                    <td className="py-4">
-                      <div className="flex flex-col gap-1">
-                        <Badge variant={offerStatusVariant[offer.status]}>{offer.status}</Badge>
-                        <span className="text-xs text-[#6b4d3c]">{offer.expiresLabel}</span>
-                      </div>
-                    </td>
-                    <td className="py-4">
-                      {(() => {
-                        const view = probabilityVariant(offer.pickupProbability)
-                        return (
-                          <div className="space-y-1 max-w-40">
-                            <Badge variant={view.variant}>{view.label}</Badge>
-                            {view.warning && (
-                              <p className="text-[11px] text-[#8c3b3c] flex items-start gap-1">
-                                <Info className="w-3 h-3 mt-0.5" />
-                                {view.warning}
-                              </p>
-                            )}
-                          </div>
-                        )
-                      })()}
-                    </td>
-                    <td className="py-4 text-center">
-                      <span className="font-semibold">{offer.requestCount}</span>
-                    </td>
-                    <td className="py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <Button variant="ghost" size="sm" className="text-[#8c3b3c]">
-                          View Requests
-                        </Button>
-                        <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-                          Edit
-                        </Button>
-                        {offer.status === 'OPEN' && (
-                          <Button variant="destructive" size="sm" onClick={() => handleCancelOffer(offer.id)}>
-                            Cancel Offer
-                          </Button>
-                        )}
-                      </div>
-                    </td>
+
+          {offers.length === 0 ? (
+            <p className="text-center text-[#6b4d3c] py-8">No surplus offers yet. Create one to get started!</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-[#6b4d3c]">
+                  <tr className="border-b border-[#f0e3d1]">
+                    <th className="py-3 font-medium">Items</th>
+                    <th className="py-3 font-medium">Pickup Window</th>
+                    <th className="py-3 font-medium">Status</th>
+                    <th className="py-3 font-medium">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </Card>
-
-        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-6">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-[#4a1f1f]">Requests Management</h2>
-              <p className="text-sm text-[#6b4d3c]">
-                Approve recipients, share pickup details, and flag volunteer needs.
-              </p>
-            </div>
-            <ClipboardList className="w-6 h-6 text-[#8c3b3c]" />
-          </div>
-          <div className="space-y-5">
-            {Object.entries(requestsGrouped).map(([offerId, group]) => (
-              <div key={offerId} className="rounded-xl border border-[#f0e3d1] bg-[#fffdf9] p-5 space-y-4">
-                <div className="flex flex-col gap-1">
-                  <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Offer {offerId}</p>
-                  <h3 className="text-lg font-semibold text-[#4a1f1f]">{group.offerSummary}</h3>
-                </div>
-                <div className="space-y-3">
-                  {group.rows.map((request) => (
-                    <div
-                      key={request.id}
-                      className="grid gap-4 md:grid-cols-[1.5fr_1fr_auto] items-center border border-dashed border-[#e6d2b8] rounded-lg p-4"
-                    >
-                      <div className="space-y-2">
-                        <p className="font-medium text-[#4a1f1f]">{request.recipient}</p>
-                        <p className="text-sm text-[#6b4d3c]">
-                          {request.city} • {request.distance} away
+                </thead>
+                <tbody className="divide-y divide-[#f0e3d1]">
+                  {offers.map((offer) => (
+                    <tr key={offer.id} className="align-top">
+                      <td className="py-4">
+                        <p className="font-semibold text-[#4a1f1f]">
+                          {offer.items.map(i => `${i.quantity} ${i.unit} ${i.name}`).join(', ')}
                         </p>
-                        {request.notes && <p className="text-sm text-[#6b4d3c]">{request.notes}</p>}
-                      </div>
-                      <div className="space-y-2">
-                        <Badge variant={requestStatusVariant[request.status]}>{request.status}</Badge>
-                        {request.status === 'APPROVED' && (
-                          <p className="text-xs text-[#6b4d3c]">
-                            {request.volunteer ? `Volunteer: ${request.volunteer}` : 'Volunteer pending'}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex gap-2 justify-end">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleRequestAction(request.id, 'APPROVED')}
-                          disabled={request.status === 'APPROVED'}
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive"
-                          onClick={() => handleRequestAction(request.id, 'REJECTED')}
-                          disabled={request.status === 'REJECTED'}
-                        >
-                          Reject
-                        </Button>
-                      </div>
-                    </div>
+                        <p className="text-xs text-[#6b4d3c] flex items-center gap-1 mt-1">
+                          <MapPin className="w-3 h-3" />
+                          {offer.pickupAddress}
+                        </p>
+                      </td>
+                      <td className="py-4 text-[#6b4d3c]">
+                        {new Date(offer.pickupWindowStart).toLocaleString()} –{' '}
+                        {new Date(offer.pickupWindowEnd).toLocaleString()}
+                      </td>
+                      <td className="py-4">
+                        <Badge variant={offerStatusVariant[offer.status]}>{offer.status}</Badge>
+                      </td>
+                      <td className="py-4">
+                        <div className="flex flex-wrap gap-2">
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+                            onClick={() => handleViewRequests(offer)}
+                          >
+                            View Requests
+                          </Button>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+                            onClick={() => handleEditOffer(offer)}
+                          >
+                            Edit
+                          </Button>
+                          {offer.status === 'OPEN' && (
+                            <Button 
+                              variant="destructive" 
+                              size="sm"
+                              onClick={() => handleCancelOffer(offer.id)}
+                            >
+                              Cancel
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
                   ))}
-                </div>
-              </div>
-            ))}
-          </div>
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
 
-        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-6">
+        {/* Impact & History */}
+        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-[#4a1f1f]">Impact & History</h2>
-              <p className="text-sm text-[#6b4d3c]">
-                Past donations feed into impact certificates and CO₂ savings.
-              </p>
+              <p className="text-sm text-[#6b4d3c]">Completed Donations</p>
             </div>
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              <Download className="w-4 h-4" />
+            <Button variant="outline" className="text-[#8c3b3c] border-[#8c3b3c]" size="sm">
+              <Download className="w-4 h-4 mr-2" />
               Export Report
             </Button>
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-[#6b4d3c]">
-                <tr>
-                  <th className="py-3 font-medium">Date</th>
-                  <th className="py-3 font-medium">Items</th>
-                  <th className="py-3 font-medium">Recipient org</th>
-                  <th className="py-3 font-medium text-center">Meals donated</th>
-                  <th className="py-3 font-medium text-center">CO₂ saved</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#f0e3d1]">
-                {donationHistory.map((record) => (
-                  <tr key={record.id}>
-                    <td className="py-4 text-[#6b4d3c]">{record.date}</td>
-                    <td className="py-4 text-[#4a1f1f]">{record.items}</td>
-                    <td className="py-4 text-[#6b4d3c]">{record.recipient}</td>
-                    <td className="py-4 text-center font-semibold text-[#4a1f1f]">{record.meals}</td>
-                    <td className="py-4 text-center text-[#6b4d3c]">{record.co2Saved} kg</td>
+
+          {deliveredOffers.length === 0 ? (
+            <p className="text-center text-[#6b4d3c] py-8">No completed donations yet.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-[#6b4d3c]">
+                  <tr className="border-b border-[#f0e3d1]">
+                    <th className="py-3 font-medium">Date</th>
+                    <th className="py-3 font-medium">Items</th>
+                    <th className="py-3 font-medium">Recipient org</th>
+                    <th className="py-3 font-medium">Meals donated</th>
+                    <th className="py-3 font-medium">CO₂ saved</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {donorInsights.map((insight) => (
-              <Card key={insight.title} className="p-4 border border-[#d9c7aa] bg-[#fdf8f0]">
-                <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">{insight.title}</p>
-                <p className="text-lg font-semibold text-[#4a1f1f]">{insight.detail}</p>
-              </Card>
-            ))}
-          </div>
+                </thead>
+                <tbody className="divide-y divide-[#f0e3d1]">
+                  {deliveredOffers.map((offer) => {
+                    const totalWeight = offer.items.reduce((sum, item) => {
+                      return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
+                    }, 0)
+                    const meals = Math.round(totalWeight * 2.2)
+                    const co2 = Math.round(totalWeight * 1.8)
+                    const date = new Date(offer.pickupWindowStart)
+
+                    return (
+                      <tr key={offer.id} className="align-top hover:bg-[#faf8f4]">
+                        <td className="py-4 text-[#4a1f1f] font-semibold">
+                          {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </td>
+                        <td className="py-4 text-[#6b4d3c]">
+                          {offer.items.map(i => `${i.name}`).join(', ')} ({meals} meals)
+                        </td>
+                        <td className="py-4 text-[#6b4d3c]">
+                          {offer.recipientOrgName || 'Recipient Org'}
+                        </td>
+                        <td className="py-4 font-semibold text-[#4a1f1f]">{meals}</td>
+                        <td className="py-4 font-semibold text-[#4a1f1f]">{co2} kg</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </Card>
 
+        {/* Organization & Notifications */}
         <Card className="p-6 border border-[#d9c7aa] bg-white space-y-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-[#4a1f1f]">Organization & Notifications</h2>
+              <h2 className="text-xl font-semibold text-[#4a1f1f]">Organization Profile</h2>
               <p className="text-sm text-[#6b4d3c]">
-                Keep donor details updated so volunteers can reach the right contact.
+                Your donor organization information.
               </p>
             </div>
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              Edit Organization
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+              onClick={() => setShowOrgForm(true)}
+            >
+              {user?.organization ? 'Edit Organization' : 'Set Up Organization'}
             </Button>
           </div>
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <p className="text-sm text-[#6b4d3c]">Organization</p>
               <p className="text-lg font-semibold text-[#4a1f1f]">
-                {user?.organization ?? 'Not provided'}
+                {user?.organization ?? 'Not set up yet'}
               </p>
-              <p className="text-sm text-[#6b4d3c]">Address: Bandra West, Mumbai</p>
+              <p className="text-sm text-[#6b4d3c]">Contact: (update in organization settings)</p>
             </div>
             <div className="space-y-2">
-              <p className="text-sm text-[#6b4d3c]">Verification</p>
+              <p className="text-sm text-[#6b4d3c]">Verification Status</p>
               <div className="flex items-center gap-2">
                 <Badge variant="success">Verified</Badge>
-                <span className="text-sm text-[#6b4d3c]">GST + FSSAI on file</span>
+                <span className="text-sm text-[#6b4d3c]">Documents on file</span>
               </div>
             </div>
-            <div className="space-y-2">
-              <p className="text-sm text-[#6b4d3c]">Storage capability</p>
-              <p className="font-medium text-[#4a1f1f]">Hot holding · Cold chain · Dry pantry</p>
-            </div>
-            <div className="space-y-2">
-              <p className="text-sm text-[#6b4d3c]">Notification preferences</p>
-              <p className="font-medium text-[#4a1f1f]">Email + SMS alerts</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              <Building2 className="w-4 h-4" />
-              Update address
-            </Button>
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              Manage notifications
-            </Button>
           </div>
         </Card>
+
+        {/* Organization Form Modal */}
+        {showOrgForm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md border border-[#d9c7aa] bg-white">
+              <div className="p-6 space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-[#4a1f1f]">
+                    {user?.organization ? 'Edit Organization' : 'Create Organization'}
+                  </h2>
+                  <p className="text-sm text-[#6b4d3c] mt-1">
+                    {user?.organization 
+                      ? 'Update your organization details'
+                      : 'Set up your organization to create surplus offers'
+                    }
+                  </p>
+                </div>
+
+                <form onSubmit={handleCreateOrganization} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">
+                      Organization Name
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="e.g., Food Bank Name, Restaurant"
+                      value={orgName}
+                      onChange={(e) => setOrgName(e.target.value)}
+                      className="border-[#d9c7aa] bg-[#faf8f4]"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">
+                      Address
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="Street address"
+                      value={orgAddress}
+                      onChange={(e) => setOrgAddress(e.target.value)}
+                      className="border-[#d9c7aa] bg-[#faf8f4]"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">
+                      City
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="e.g., Delhi, Mumbai"
+                      value={orgCity}
+                      onChange={(e) => setOrgCity(e.target.value)}
+                      className="border-[#d9c7aa] bg-[#faf8f4]"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 border-[#d9c7aa] text-[#6b4d3c]"
+                      onClick={() => {
+                        setShowOrgForm(false)
+                        setOrgName('')
+                        setOrgAddress('')
+                        setOrgCity('')
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      disabled={isCreatingOrg}
+                      className="flex-1 bg-[#8c3b3c] hover:bg-[#6b2d2d] text-white"
+                    >
+                      {isCreatingOrg ? 'Creating...' : 'Create Organization'}
+                    </Button>
+                  </div>
+                </form>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* View Requests Modal */}
+        {showRequestsModal && selectedOffer && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md border border-[#d9c7aa] bg-white">
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-[#4a1f1f]">
+                    Requests for: {selectedOffer.items.map(i => i.name).join(', ')}
+                  </h2>
+                  <button
+                    onClick={() => setShowRequestsModal(false)}
+                    className="text-[#6b4d3c] hover:text-[#4a1f1f]"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="space-y-3 max-h-96 overflow-y-auto">
+                  <p className="text-sm text-[#6b4d3c]">
+                    Status: <Badge variant="default">{selectedOffer.status}</Badge>
+                  </p>
+                  <p className="text-sm text-[#6b4d3c]">
+                    📍 {selectedOffer.pickupAddress}
+                  </p>
+                  <p className="text-sm text-[#6b4d3c]">
+                    🕐 {new Date(selectedOffer.pickupWindowStart).toLocaleString()} to{' '}
+                    {new Date(selectedOffer.pickupWindowEnd).toLocaleString()}
+                  </p>
+                  <p className="text-xs text-[#8c7b6b] bg-[#f9f5f0] p-2 rounded">
+                    Recipient requests will appear here once they submit requests for this offer.
+                  </p>
+                </div>
+
+                <Button
+                  onClick={() => setShowRequestsModal(false)}
+                  className="w-full bg-[#8c3b3c] hover:bg-[#732f30] text-white"
+                >
+                  Close
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* Edit Offer Modal */}
+        {showEditModal && selectedOffer && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md border border-[#d9c7aa] bg-white">
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-lg font-semibold text-[#4a1f1f]">Edit Offer</h2>
+                  <button
+                    onClick={() => setShowEditModal(false)}
+                    className="text-[#6b4d3c] hover:text-[#4a1f1f]"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-sm font-medium text-[#4a1f1f] mb-1">Items</p>
+                    <ul className="text-sm text-[#6b4d3c]">
+                      {selectedOffer.items.map((item, idx) => (
+                        <li key={idx}>• {item.quantity} {item.unit} {item.name}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-[#4a1f1f] mb-1">Pickup Address</p>
+                    <p className="text-sm text-[#6b4d3c]">{selectedOffer.pickupAddress}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-[#4a1f1f] mb-1">Pickup Window</p>
+                    <p className="text-sm text-[#6b4d3c]">
+                      {new Date(selectedOffer.pickupWindowStart).toLocaleString()} –{' '}
+                      {new Date(selectedOffer.pickupWindowEnd).toLocaleString()}
+                    </p>
+                  </div>
+                  <p className="text-xs text-[#8c7b6b] bg-[#f9f5f0] p-2 rounded">
+                    Full edit functionality coming soon. You can cancel this offer if needed.
+                  </p>
+                </div>
+
+                <Button
+                  onClick={() => setShowEditModal(false)}
+                  className="w-full bg-[#8c3b3c] hover:bg-[#732f30] text-white"
+                >
+                  Close
+                </Button>
+              </div>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   )

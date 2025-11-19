@@ -12,8 +12,23 @@ import { ObjectId } from 'mongodb'
 
 export const dynamic = 'force-dynamic'
 
+export const GET = async (req: NextRequest, context: any) => {
+  const { id } = await context.params
+
+  if (!id || !ObjectId.isValid(id)) {
+    return NextResponse.json({ error: 'Invalid organization ID' }, { status: 400 })
+  }
+
+  const organization = await getOrganizationById(id)
+  if (!organization) {
+    return NextResponse.json({ error: 'Organization not found' }, { status: 404 })
+  }
+
+  return NextResponse.json(mapOrganization(organization))
+}
+
 export const PATCH = async (req: NextRequest, context: any) => {
-  const { id } = context.params
+  const { id } = await context.params
 
   let payload: OrganizationUpdatePayload
   try {
