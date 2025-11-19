@@ -457,15 +457,23 @@ export default function DonorPage() {
   return (
     <div className="min-h-screen bg-[#f7f1e3] py-10 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
-        <header className="space-y-3">
-          <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Donor Dashboard</p>
-          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3 text-[#4a1f1f]">
-            <Leaf className="w-8 h-8 text-[#8c3b3c]" />
-            Post surplus quickly{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
-          </h1>
-          <p className="text-[#6b4d3c] max-w-3xl">
-            Manage your surplus offers, approve recipient requests, and track your impact.
-          </p>
+        <header className="space-y-2">
+          <div className="flex items-start gap-3">
+            <Leaf className="w-8 h-8 text-[#8c3b3c] shrink-0 mt-1" />
+            <div className="text-center flex-1">
+              <h1 className="text-4xl md:text-5xl font-bold text-[#4a1f1f]">
+                Donor Dashboard
+              </h1>
+            </div>
+          </div>
+          <div className="text-center">
+            <h2 className="text-lg md:text-xl text-[#4a1f1f]">
+              Post surplus quickly{user?.name ? `, ${user.name.split(' ')[0]}` : ''}
+            </h2>
+            <p className="text-[#6b4d3c] max-w-3xl mx-auto mt-2">
+              Manage your surplus offers, approve recipient requests, and track your impact.
+            </p>
+          </div>
         </header>
 
         {fetchError && (
@@ -477,29 +485,28 @@ export default function DonorPage() {
 
 
 
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-          {summaryCards.map((card, index) => {
-            const Icon = card.icon
-            return (
-              <Card 
-                key={card.label} 
-                className={`p-5 border border-[#d9c7aa] bg-white flex flex-col gap-3 ${
-                  summaryCards.length % 2 === 1 && index === summaryCards.length - 1 
-                    ? 'md:col-start-2 lg:col-start-2' 
-                    : ''
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-[#6b4d3c]">{card.label}</p>
-                  <span className="p-2 rounded-full bg-[#f0d8c0] text-[#8c3b3c]">
-                    <Icon className="w-4 h-4" />
-                  </span>
-                </div>
-                <p className="text-3xl font-semibold text-[#4a1f1f]">{card.value}</p>
-                <p className="text-sm text-[#6b4d3c]">{card.helper}</p>
-              </Card>
-            )
-          })}
+        <div className="space-y-4">
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-[#4a1f1f]">Impact Overview</h2>
+            <p className="text-sm text-[#6b4d3c]">Real-time tracking of your donations and predictions</p>
+          </div>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+            {summaryCards.map((card) => {
+              const Icon = card.icon
+              return (
+                <Card key={card.label} className="p-5 border border-[#d9c7aa] bg-white flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium text-[#6b4d3c]">{card.label}</p>
+                    <span className="p-2 rounded-full bg-[#f0d8c0] text-[#8c3b3c]">
+                      <Icon className="w-4 h-4" />
+                    </span>
+                  </div>
+                  <p className="text-3xl font-semibold text-[#4a1f1f]">{card.value}</p>
+                  <p className="text-sm text-[#6b4d3c]">{card.helper}</p>
+                </Card>
+              )
+            })}
+          </div>
         </div>
 
         <Card className="p-6 border border-[#d9c7aa] bg-white flex flex-wrap items-center gap-4 justify-between">
