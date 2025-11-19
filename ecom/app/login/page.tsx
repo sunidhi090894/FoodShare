@@ -69,7 +69,7 @@ export default function LoginPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-70 transition">
             <Leaf className="w-6 h-6 text-primary" />
-            <span className="font-bold text-lg text-foreground">FoodShare</span>
+            <span className="font-bold text-lg text-foreground">AaharSetu</span>
           </Link>
           <Link href="/signup" className="text-foreground/70 hover:text-foreground transition">
             Don't have an account? Sign Up
@@ -81,7 +81,7 @@ export default function LoginPage() {
         <div className="max-w-md w-full space-y-8">
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold text-foreground">Welcome Back</h1>
-            <p className="text-foreground/70">Sign in to your FoodShare account</p>
+            <p className="text-foreground/70">Sign in to your AaharSetu account</p>
           </div>
 
           <Card className="p-6 border border-border">

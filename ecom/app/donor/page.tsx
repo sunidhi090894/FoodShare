@@ -271,7 +271,7 @@ export default function DonorPage() {
     {
       label: 'CO₂ Saved This Month',
       value: `${co2SavedThisMonth.toLocaleString()} kg`,
-      helper: 'FoodShare conversion factor',
+      helper: 'AaharSetu conversion factor',
       icon: Recycle,
     },
     {
@@ -446,7 +446,7 @@ export default function DonorPage() {
                       {(() => {
                         const view = probabilityVariant(offer.pickupProbability)
                         return (
-                          <div className="space-y-1 max-w-[160px]">
+                          <div className="space-y-1 max-w-40">
                             <Badge variant={view.variant}>{view.label}</Badge>
                             {view.warning && (
                               <p className="text-[11px] text-[#8c3b3c] flex items-start gap-1">

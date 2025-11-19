@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { useAuth } from '@/contexts/auth-context'
+// import removed: auth-context no longer exists
 import { requiresOrganizationCompletion } from '@/lib/auth-redirect'
 import type { UserRole } from '@/lib/users'
 import { Users, Leaf, HeartHandshake } from 'lucide-react'
@@ -39,25 +39,15 @@ const ROLE_OPTIONS: Array<{
 
 export default function RoleOnboardingPage() {
   const router = useRouter()
-  const { backendUser, authLoading, refreshBackendUser } = useAuth()
+  // Removed useAuth: backendUser, authLoading, refreshBackendUser are not available
   const [selectedRole, setSelectedRole] = useState<OnboardingRole | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    if (authLoading) return
-    if (!backendUser) {
-      router.replace('/login')
-      return
-    }
-
-    if (backendUser.role && !requiresOrganizationCompletion(backendUser)) {
-      router.replace('/dashboard')
-    }
-  }, [authLoading, backendUser, router])
+  // Removed useEffect logic for backendUser and authLoading
 
   const handleContinue = async () => {
-    if (!selectedRole || !backendUser) {
+    if (!selectedRole) {
       setError('Please select a role to continue.')
       return
     }
@@ -66,11 +56,10 @@ export default function RoleOnboardingPage() {
     setError('')
 
     try {
+      // TODO: Implement role selection logic (e.g., save to DB or context)
       if (selectedRole === 'VOLUNTEER') {
-        await refreshBackendUser(undefined, { role: 'VOLUNTEER', organizationId: null })
         router.push('/dashboard')
       } else {
-        await refreshBackendUser(undefined, { role: selectedRole, organizationId: null })
         router.push(`/onboarding/organization?type=${selectedRole}`)
       }
     } catch (err) {
@@ -86,7 +75,7 @@ export default function RoleOnboardingPage() {
       <div className="max-w-4xl mx-auto space-y-8">
         <div className="space-y-2 text-center">
           <p className="text-sm uppercase tracking-wide text-primary font-semibold">Step 1 of 2</p>
-          <h1 className="text-3xl font-bold">Tell us how you&apos;ll use FoodShare</h1>
+          <h1 className="text-3xl font-bold">Tell us how you&apos;ll use AaharSetu</h1>
           <p className="text-muted-foreground">Choose the role that best describes your organization or contribution.</p>
         </div>
 
@@ -123,7 +112,7 @@ export default function RoleOnboardingPage() {
         )}
 
         <div className="flex justify-end">
-          <Button size="lg" onClick={handleContinue} disabled={isSubmitting || authLoading}>
+          <Button size="lg" onClick={handleContinue} disabled={isSubmitting}>
             {isSubmitting ? 'Saving...' : 'Continue'}
           </Button>
         </div>

@@ -218,7 +218,7 @@ export default function AdminDataPage() {
       <div className="max-w-7xl mx-auto space-y-8">
         <header className="space-y-3">
           <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Admin Control Panel</p>
-          <h1 className="text-3xl md:text-4xl font-bold text-[#4a1f1f]">Monitor the entire FoodShare network</h1>
+          <h1 className="text-3xl md:text-4xl font-bold text-[#4a1f1f]">Monitor the entire AaharSetu network</h1>
           <p className="text-[#6b4d3c] max-w-3xl">
             Approve organizations, oversee surplus, coordinate volunteers, and keep impact analytics up to date.
           </p>
@@ -476,7 +476,7 @@ export default function AdminDataPage() {
             <Card className="p-4 border border-[#d9c7aa] bg-[#fffdf9]">
               <p className="text-sm text-[#6b4d3c]">CO₂ saved</p>
               <p className="text-2xl font-semibold text-[#4a1f1f]">6.8 tons</p>
-              <p className="text-xs text-[#6b4d3c]">Converted via FoodShare factor</p>
+              <p className="text-xs text-[#6b4d3c]">Converted via AaharSetu factor</p>
             </Card>
             <Card className="p-4 border border-[#d9c7aa] bg-[#fffdf9]">
               <p className="text-sm text-[#6b4d3c]">Top donor city</p>

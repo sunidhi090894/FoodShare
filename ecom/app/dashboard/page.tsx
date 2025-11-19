@@ -77,7 +77,7 @@ export default function DashboardPage() {
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Leaf className="w-6 h-6 text-primary" />
-            <span className="font-bold text-lg text-foreground">FoodShare</span>
+            <span className="font-bold text-lg text-foreground">AaharSetu</span>
           </div>
           <div className="flex items-center gap-4">
             <NotificationBell />

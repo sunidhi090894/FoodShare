@@ -209,7 +209,7 @@ export default function RecipientPortal() {
     {
       label: 'Total Donations Received',
       value: totalDonations.toString(),
-      helper: 'Since joining FoodShare',
+      helper: 'Since joining AaharSetu',
       icon: Layers,
     },
   ]

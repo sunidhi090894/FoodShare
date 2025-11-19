@@ -12,7 +12,7 @@ export default function SignupPage() {
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <Link href="/" className="flex items-center gap-2 hover:opacity-70 transition">
             <Leaf className="w-6 h-6 text-primary" />
-            <span className="font-bold text-lg text-foreground">FoodShare</span>
+            <span className="font-bold text-lg text-foreground">AaharSetu</span>
           </Link>
           <Link href="/login" className="text-foreground/70 hover:text-foreground transition">
             Already have an account? Sign In
@@ -24,7 +24,7 @@ export default function SignupPage() {
         <div className="max-w-md mx-auto space-y-8">
           <div className="text-center space-y-2">
             <h1 className="text-3xl font-bold text-foreground">Get Started</h1>
-            <p className="text-foreground/70">Join FoodShare and make a difference</p>
+            <p className="text-foreground/70">Join AaharSetu and make a difference</p>
           </div>
 
           <Suspense fallback={<div className="h-96" />}>

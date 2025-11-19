@@ -11,7 +11,7 @@ export async function connectToDatabase() {
 
   const client = new MongoClient(uri)
   await client.connect()
-  const db = client.db('foodshare')
+  const db = client.db('AaharSetu')
 
   cachedClient = client
   cachedDb = db
