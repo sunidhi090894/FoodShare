@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,7 +15,7 @@ const STORAGE_OPTIONS = [
   { value: 'FROZEN', label: 'Frozen' },
 ]
 
-export default function OrganizationOnboardingPage() {
+function OrganizationOnboardingContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   // TODO: Replace with actual user context if needed
@@ -271,5 +271,13 @@ export default function OrganizationOnboardingPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function OrganizationOnboardingPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center">Loading...</div>}>
+      <OrganizationOnboardingContent />
+    </Suspense>
   )
 }

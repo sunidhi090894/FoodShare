@@ -1,4 +1,4 @@
-import { MongoClient, Db, Collection } from 'mongodb'
+import { MongoClient, Db, Collection, type Document } from 'mongodb'
 
 const uri = process.env.MONGODB_URI || 'mongodb://localhost:27017'
 let cachedClient: MongoClient | null = null
@@ -19,9 +19,11 @@ export async function connectToDatabase() {
   return { client, db }
 }
 
-export async function getCollection(name: string): Promise<Collection> {
+export async function getCollection<TSchema extends Document = Document>(
+  name: string
+): Promise<Collection<TSchema>> {
   const { db } = await connectToDatabase()
-  return db.collection(name)
+  return db.collection<TSchema>(name)
 }
 
 // Initialize collections and indexes

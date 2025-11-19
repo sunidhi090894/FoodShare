@@ -78,10 +78,11 @@ export async function createPickupTask({
   recipientOrgId: ObjectId
   routeOrder?: number | null
 }) {
-  const collection = await getCollection('pickup_tasks')
+  const collection = await getCollection<PickupTaskDocument>('pickup_tasks')
   const now = new Date()
 
-  const doc: Omit<PickupTaskDocument, '_id'> = {
+  const doc: PickupTaskDocument = {
+    _id: new ObjectId(),
     surplusId,
     volunteerUserId,
     donorOrgId,
@@ -94,36 +95,36 @@ export async function createPickupTask({
     updatedAt: now,
   }
 
-  const result = await collection.insertOne(doc)
+  await collection.insertOne(doc)
   const [surplus, donor, recipient] = await Promise.all([
     getSurplusOfferById(surplusId),
     getOrganizationById(donorOrgId),
     getOrganizationById(recipientOrgId),
   ])
 
-  return mapPickupTask({ ...doc, _id: result.insertedId }, surplus ?? undefined, donor ?? undefined, recipient ?? undefined)
+  return mapPickupTask(doc, surplus ?? undefined, donor ?? undefined, recipient ?? undefined)
 }
 
 export async function listPickupTasksForVolunteer(volunteerId: ObjectId) {
-  const collection = await getCollection('pickup_tasks')
+  const collection = await getCollection<PickupTaskDocument>('pickup_tasks')
   const docs = await collection
-    .find<PickupTaskDocument>({ volunteerUserId: volunteerId })
+    .find({ volunteerUserId: volunteerId })
     .sort({ createdAt: -1 })
     .toArray()
 
   if (!docs.length) return []
 
   const surplusIds = docs.map((doc) => doc.surplusId)
-  const surplusCollection = await getCollection('surplus_offers')
+  const surplusCollection = await getCollection<SurplusOfferDocument>('surplus_offers')
   const surplusDocs = await surplusCollection
-    .find<SurplusOfferDocument>({ _id: { $in: surplusIds } })
+    .find({ _id: { $in: surplusIds } })
     .toArray()
   const surplusMap = new Map(surplusDocs.map((doc) => [doc._id.toHexString(), doc]))
 
   const orgIds = docs.flatMap((doc) => [doc.donorOrgId, doc.recipientOrgId])
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const orgDocs = await organizations
-    .find<OrganizationDocument>({ _id: { $in: orgIds } })
+    .find({ _id: { $in: orgIds } })
     .toArray()
   const orgMap = new Map(orgDocs.map((doc) => [doc._id.toHexString(), doc]))
 
@@ -138,9 +139,9 @@ export async function listPickupTasksForVolunteer(volunteerId: ObjectId) {
 }
 
 export async function getPickupTaskById(id: string | ObjectId) {
-  const collection = await getCollection('pickup_tasks')
+  const collection = await getCollection<PickupTaskDocument>('pickup_tasks')
   const _id = typeof id === 'string' ? new ObjectId(id) : id
-  return collection.findOne<PickupTaskDocument>({ _id })
+  return collection.findOne({ _id })
 }
 
 export async function updatePickupTaskStatus(task: PickupTaskDocument, status: PickupStatus) {
@@ -148,7 +149,7 @@ export async function updatePickupTaskStatus(task: PickupTaskDocument, status: P
     throw new Error(`Cannot change status from ${task.status} to ${status}`)
   }
 
-  const collection = await getCollection('pickup_tasks')
+  const collection = await getCollection<PickupTaskDocument>('pickup_tasks')
   const now = new Date()
   const $set: Record<string, unknown> = { status, updatedAt: now }
 
@@ -158,6 +159,6 @@ export async function updatePickupTaskStatus(task: PickupTaskDocument, status: P
     $set.deliveryTimeActual = now
   }
 
-  const result = await collection.findOneAndUpdate<PickupTaskDocument>({ _id: task._id }, { $set }, { returnDocument: 'after' })
-  return result.value ?? null
+  const updated = await collection.findOneAndUpdate({ _id: task._id }, { $set }, { returnDocument: 'after' })
+  return updated ?? null
 }

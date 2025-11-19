@@ -5,14 +5,16 @@ import { getSurplusOfferById, updateSurplusOffer } from '@/lib/surplus-offers'
 import { getOrganizationById } from '@/lib/organizations'
 import { createNotification } from '@/lib/notifications'
 
-interface RouteContext {
-  params: { id: string }
-}
-
 export const dynamic = 'force-dynamic'
+type RouteParams = { id: string }
 
-export const PATCH = async (req: NextRequest, context: RouteContext) => {
+export const PATCH = async (
+  req: NextRequest,
+  context: { params: Promise<RouteParams> }
+) => {
   // All user/auth logic removed
+
+  const { id } = await context.params
 
   let body: { status?: string }
   try {
@@ -26,7 +28,7 @@ export const PATCH = async (req: NextRequest, context: RouteContext) => {
     status = "PENDING"
   }
 
-  const requestDoc = await getRequestById(context.params.id)
+  const requestDoc = await getRequestById(id)
 
   if (!requestDoc) {
     return NextResponse.json({ error: 'Request not found' }, { status: 404 })

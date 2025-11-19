@@ -82,7 +82,16 @@ export function mapOrganization(doc: OrganizationDocument): OrganizationResponse
   }
 }
 
-function sanitizePayload(input: Partial<OrganizationPayload>, fallbackType?: OrganizationType | null) {
+type SanitizedPayload<T extends Partial<OrganizationPayload>> = T & {
+  type: OrganizationType
+  storageCapabilities: string[]
+  serviceHours: ServiceWindow[]
+}
+
+function sanitizePayload<T extends Partial<OrganizationPayload>>(
+  input: T,
+  fallbackType?: OrganizationType | null
+): SanitizedPayload<T> {
   const normalizedType = normalizeOrganizationType(input.type) ?? fallbackType
 
   if (!normalizedType) {
@@ -94,15 +103,16 @@ function sanitizePayload(input: Partial<OrganizationPayload>, fallbackType?: Org
     type: normalizedType,
     storageCapabilities: Array.isArray(input.storageCapabilities) ? input.storageCapabilities : [],
     serviceHours: Array.isArray(input.serviceHours) ? input.serviceHours : [],
-  }
+  } as SanitizedPayload<T>
 }
 
 export async function createOrganizationForUser(user: UserDocument, payload: OrganizationPayload) {
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const now = new Date()
   const data = sanitizePayload(payload)
 
-  const document: Omit<OrganizationDocument, '_id'> = {
+  const document: OrganizationDocument = {
+    _id: new ObjectId(),
     name: data.name,
     type: data.type,
     address: data.address,
@@ -119,18 +129,16 @@ export async function createOrganizationForUser(user: UserDocument, payload: Org
     updatedAt: now,
   }
 
-  const result = await organizations.insertOne(document)
-  const inserted = { ...document, _id: result.insertedId }
+  await organizations.insertOne(document)
+  await updateUserOrganizationLink(user._id, document._id, data.type as UserRole)
 
-  await updateUserOrganizationLink(user._id, result.insertedId, data.type as UserRole)
-
-  return mapOrganization(inserted)
+  return mapOrganization(document)
 }
 
 export async function listOrganizationsForUser(userId: ObjectId) {
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const docs = await organizations
-    .find<OrganizationDocument>({ createdByUserId: userId })
+    .find({ createdByUserId: userId })
     .sort({ createdAt: -1 })
     .toArray()
 
@@ -138,16 +146,16 @@ export async function listOrganizationsForUser(userId: ObjectId) {
 }
 
 export async function getOrganizationById(id: string | ObjectId) {
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const objectId = typeof id === 'string' ? new ObjectId(id) : id
-  return organizations.findOne<OrganizationDocument>({ _id: objectId })
+  return organizations.findOne({ _id: objectId })
 }
 
 export async function updateOrganization(
   id: ObjectId,
   updates: OrganizationUpdatePayload
 ): Promise<OrganizationDocument | null> {
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const payload = { ...updates }
   const data: Record<string, unknown> = { updatedAt: new Date() }
 
@@ -170,20 +178,20 @@ export async function updateOrganization(
     data.type = normalizedType
   }
 
-  const result = await organizations.findOneAndUpdate<OrganizationDocument>(
+  const updated = await organizations.findOneAndUpdate(
     { _id: id },
     { $set: data },
     { returnDocument: 'after' }
   )
 
-  return result.value ?? null
+  return updated ?? null
 }
 
 export async function incrementOrganizationImpact(
   organizationId: ObjectId,
   delta: { weightKg?: number; meals?: number; deliveries?: number; co2SavedKg?: number }
 ) {
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const inc: Record<string, number> = {}
 
   if (typeof delta.weightKg === 'number') inc['impactTotals.weightKg'] = delta.weightKg
@@ -204,9 +212,9 @@ export async function incrementOrganizationImpact(
 }
 
 export async function listPendingOrganizations() {
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const docs = await organizations
-    .find<OrganizationDocument>({ verified: false })
+    .find({ verified: false })
     .sort({ createdAt: 1 })
     .toArray()
 
@@ -214,12 +222,12 @@ export async function listPendingOrganizations() {
 }
 
 export async function setOrganizationVerification(id: ObjectId, verified: boolean) {
-  const organizations = await getCollection('organizations')
-  const result = await organizations.findOneAndUpdate<OrganizationDocument>(
+  const organizations = await getCollection<OrganizationDocument>('organizations')
+  const updated = await organizations.findOneAndUpdate(
     { _id: id },
     { $set: { verified, updatedAt: new Date() } },
     { returnDocument: 'after' }
   )
 
-  return result.value ?? null
+  return updated ?? null
 }

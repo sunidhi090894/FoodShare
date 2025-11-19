@@ -26,8 +26,9 @@ export async function createNotification(input: {
   message: string
   type: NotificationType
 }) {
-  const notifications = await getCollection('notifications')
-  const doc: Omit<NotificationDocument, '_id'> = {
+  const notifications = await getCollection<NotificationDocument>('notifications')
+  const doc: NotificationDocument = {
+    _id: new ObjectId(),
     userId: input.userId,
     title: input.title,
     message: input.message,
@@ -39,21 +40,21 @@ export async function createNotification(input: {
 }
 
 export async function listNotificationsForUser(userId: ObjectId, limit = 20) {
-  const notifications = await getCollection('notifications')
+  const notifications = await getCollection<NotificationDocument>('notifications')
   return notifications
-    .find<NotificationDocument>({ userId })
+    .find({ userId })
     .sort({ createdAt: -1 })
     .limit(limit)
     .toArray()
 }
 
 export async function countUnreadNotifications(userId: ObjectId) {
-  const notifications = await getCollection('notifications')
+  const notifications = await getCollection<NotificationDocument>('notifications')
   return notifications.countDocuments({ userId, isRead: false })
 }
 
 export async function markNotificationsRead(userId: ObjectId, notificationIds?: ObjectId[]) {
-  const notifications = await getCollection('notifications')
+  const notifications = await getCollection<NotificationDocument>('notifications')
   const filter: Record<string, unknown> = { userId }
   if (notificationIds && notificationIds.length) {
     filter._id = { $in: notificationIds }

@@ -92,14 +92,14 @@ export async function findUserByFirebaseUid(uid: string) {
 }
 
 export async function getUserDocumentByFirebaseUid(uid: string) {
-  const users = await getCollection('users')
-  return users.findOne<UserDocument>({ firebaseUid: uid })
+  const users = await getCollection<UserDocument>('users')
+  return users.findOne({ firebaseUid: uid })
 }
 
 export async function getUserDocumentById(id: string | ObjectId) {
-  const users = await getCollection('users')
+  const users = await getCollection<UserDocument>('users')
   const objectId = typeof id === 'string' ? new ObjectId(id) : id
-  return users.findOne<UserDocument>({ _id: objectId })
+  return users.findOne({ _id: objectId })
 }
 
 
@@ -108,7 +108,7 @@ export async function updateUserOrganizationLink(
   organizationId: ObjectId | null,
   role?: UserRole | null
 ) {
-  const users = await getCollection('users')
+  const users = await getCollection<UserDocument>('users')
   const updates: Record<string, unknown> = {
     updatedAt: new Date(),
     organizationId,

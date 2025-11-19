@@ -44,9 +44,9 @@ export function mapSurplusRequest(
 
 async function getOrganizationsMap(ids: ObjectId[]) {
   if (!ids.length) return new Map<string, OrganizationDocument>()
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const docs = await organizations
-    .find<OrganizationDocument>({ _id: { $in: ids } })
+    .find({ _id: { $in: ids } })
     .toArray()
   return new Map(docs.map((doc) => [doc._id.toHexString(), doc]))
 }
@@ -56,8 +56,8 @@ export async function createSurplusRequest(
   recipientOrganization: OrganizationDocument,
   userId: ObjectId
 ) {
-  const requests = await getCollection('surplus_requests')
-  const existing = await requests.findOne<SurplusRequestDocument>({
+  const requests = await getCollection<SurplusRequestDocument>('surplus_requests')
+  const existing = await requests.findOne({
     surplusId: surplus._id,
     requestedByUserId: userId,
   })
@@ -67,36 +67,30 @@ export async function createSurplusRequest(
   }
 
   const now = new Date()
-  const result = await requests.insertOne({
+  const doc: SurplusRequestDocument = {
+    _id: new ObjectId(),
     surplusId: surplus._id,
     recipientOrgId: recipientOrganization._id,
     requestedByUserId: userId,
     status: 'PENDING',
     createdAt: now,
     updatedAt: now,
-  })
+  }
+  await requests.insertOne(doc)
 
   const donorOrg = await getOrganizationById(surplus.organizationId)
 
   return mapSurplusRequest(
-    {
-      _id: result.insertedId,
-      surplusId: surplus._id,
-      recipientOrgId: recipientOrganization._id,
-      requestedByUserId: userId,
-      status: 'PENDING',
-      createdAt: now,
-      updatedAt: now,
-    },
+    doc,
     surplus,
     donorOrg ?? undefined
   )
 }
 
 export async function listRequestsForUser(userId: ObjectId) {
-  const requestsCol = await getCollection('surplus_requests')
+  const requestsCol = await getCollection<SurplusRequestDocument>('surplus_requests')
   const docs = await requestsCol
-    .find<SurplusRequestDocument>({ requestedByUserId: userId })
+    .find({ requestedByUserId: userId })
     .sort({ createdAt: -1 })
     .toArray()
 
@@ -105,9 +99,9 @@ export async function listRequestsForUser(userId: ObjectId) {
   }
 
   const offerIds = docs.map((doc) => doc.surplusId)
-  const offersCol = await getCollection('surplus_offers')
+  const offersCol = await getCollection<SurplusOfferDocument>('surplus_offers')
   const offers = await offersCol
-    .find<SurplusOfferDocument>({ _id: { $in: offerIds } })
+    .find({ _id: { $in: offerIds } })
     .toArray()
   const offerMap = new Map(offers.map((offer) => [offer._id.toHexString(), offer]))
 
@@ -122,18 +116,18 @@ export async function listRequestsForUser(userId: ObjectId) {
 }
 
 export async function getRequestById(id: string | ObjectId) {
-  const requestsCol = await getCollection('surplus_requests')
+  const requestsCol = await getCollection<SurplusRequestDocument>('surplus_requests')
   const objectId = typeof id === 'string' ? new ObjectId(id) : id
-  return requestsCol.findOne<SurplusRequestDocument>({ _id: objectId })
+  return requestsCol.findOne({ _id: objectId })
 }
 
 export async function updateRequestStatus(request: SurplusRequestDocument, status: RequestStatus) {
-  const requestsCol = await getCollection('surplus_requests')
-  const result = await requestsCol.findOneAndUpdate<SurplusRequestDocument>(
+  const requestsCol = await getCollection<SurplusRequestDocument>('surplus_requests')
+  const updated = await requestsCol.findOneAndUpdate(
     { _id: request._id },
     { $set: { status, updatedAt: new Date() } },
     { returnDocument: 'after' }
   )
 
-  return result.value ?? null
+  return updated ?? null
 }

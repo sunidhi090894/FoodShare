@@ -10,7 +10,7 @@ export interface PotentialSurplusForecast {
 }
 
 export async function upsertForecast(organizationId: ObjectId, date: string, predictedSurplusKg: number) {
-  const collection = await getCollection('potential_surplus_forecasts')
+  const collection = await getCollection<PotentialSurplusForecast>('potential_surplus_forecasts')
   await collection.updateOne(
     { organizationId, date },
     {
@@ -24,9 +24,9 @@ export async function upsertForecast(organizationId: ObjectId, date: string, pre
 }
 
 export async function listUpcomingForecasts(organizationId: ObjectId, fromDate: string) {
-  const collection = await getCollection('potential_surplus_forecasts')
+  const collection = await getCollection<PotentialSurplusForecast>('potential_surplus_forecasts')
   return collection
-    .find<PotentialSurplusForecast>({
+    .find({
       organizationId,
       date: { $gte: fromDate },
     })

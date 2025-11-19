@@ -86,6 +86,17 @@ function sanitizeItems(items: SurplusItem[]): SurplusItem[] {
   })
 }
 
+type GeoInput = { latitude?: number | null; longitude?: number | null } | null | undefined
+
+function normalizeGeoLocation(location: GeoInput) {
+  if (!location) return null
+  const { latitude, longitude } = location
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') {
+    return null
+  }
+  return { latitude, longitude }
+}
+
 export function mapSurplusOffer(doc: SurplusOfferDocument, org?: OrganizationDocument | null): SurplusOfferResponse {
   return {
     id: doc._id.toHexString(),
@@ -110,10 +121,11 @@ export async function createSurplusOffer(
   organization: OrganizationDocument,
   payload: SurplusOfferInput
 ) {
-  const surplus = await getCollection('surplus_offers')
+  const surplus = await getCollection<SurplusOfferDocument>('surplus_offers')
   const now = new Date()
 
-  const doc: Omit<SurplusOfferDocument, '_id'> = {
+  const doc: SurplusOfferDocument = {
+    _id: new ObjectId(),
     organizationId: organization._id,
     createdByUserId: user._id,
     items: sanitizeItems(payload.items),
@@ -121,15 +133,15 @@ export async function createSurplusOffer(
     pickupWindowStart: toDate(payload.pickupWindowStart, 'pickupWindowStart'),
     pickupWindowEnd: toDate(payload.pickupWindowEnd, 'pickupWindowEnd'),
     pickupAddress: payload.pickupAddress || organization.address,
-    geoLocation: payload.geoLocation ?? organization.geoLocation ?? null,
+    geoLocation: normalizeGeoLocation(payload.geoLocation) ?? normalizeGeoLocation(organization.geoLocation) ?? null,
     status: payload.status && SURPLUS_STATUSES.includes(payload.status) ? payload.status : 'OPEN',
     expiryDateTime: toDate(payload.expiryDateTime, 'expiryDateTime'),
     createdAt: now,
     updatedAt: now,
   }
 
-  const result = await surplus.insertOne(doc)
-  return mapSurplusOffer({ ...doc, _id: result.insertedId }, organization)
+  await surplus.insertOne(doc)
+  return mapSurplusOffer(doc, organization)
 }
 
 async function getOrganizationsForOffers(docs: SurplusOfferDocument[]) {
@@ -138,21 +150,21 @@ async function getOrganizationsForOffers(docs: SurplusOfferDocument[]) {
     return new Map<string, OrganizationDocument>()
   }
 
-  const organizations = await getCollection('organizations')
+  const organizations = await getCollection<OrganizationDocument>('organizations')
   const orgDocs = await organizations
-    .find<OrganizationDocument>({ _id: { $in: ids } })
+    .find({ _id: { $in: ids } })
     .toArray()
   return new Map(orgDocs.map((org) => [org._id.toHexString(), org]))
 }
 
 export async function listSurplusOffersForUser(userId: ObjectId, status?: SurplusStatus) {
-  const surplus = await getCollection('surplus_offers')
+  const surplus = await getCollection<SurplusOfferDocument>('surplus_offers')
   const filter: Record<string, unknown> = { createdByUserId: userId }
   if (status && SURPLUS_STATUSES.includes(status)) {
     filter.status = status
   }
   const docs = await surplus
-    .find<SurplusOfferDocument>(filter)
+    .find(filter)
     .sort({ createdAt: -1 })
     .toArray()
 
@@ -160,9 +172,9 @@ export async function listSurplusOffersForUser(userId: ObjectId, status?: Surplu
 }
 
 export async function listOpenSurplusOffers(filters?: { city?: string }) {
-  const surplus = await getCollection('surplus_offers')
+  const surplus = await getCollection<SurplusOfferDocument>('surplus_offers')
   const docs = await surplus
-    .find<SurplusOfferDocument>({ status: 'OPEN' })
+    .find({ status: 'OPEN' })
     .sort({ pickupWindowStart: 1 })
     .toArray()
 
@@ -178,16 +190,16 @@ export async function listOpenSurplusOffers(filters?: { city?: string }) {
 }
 
 export async function getSurplusOfferById(id: string | ObjectId) {
-  const surplus = await getCollection('surplus_offers')
+  const surplus = await getCollection<SurplusOfferDocument>('surplus_offers')
   const _id = typeof id === 'string' ? new ObjectId(id) : id
-  return surplus.findOne<SurplusOfferDocument>({ _id })
+  return surplus.findOne({ _id })
 }
 
 export async function updateSurplusOffer(
   id: ObjectId,
   updates: Partial<SurplusOfferInput> & { status?: SurplusStatus }
 ) {
-  const surplus = await getCollection('surplus_offers')
+  const surplus = await getCollection<SurplusOfferDocument>('surplus_offers')
   const $set: Record<string, unknown> = { updatedAt: new Date() }
 
   if (updates.items) $set.items = sanitizeItems(updates.items)
@@ -195,10 +207,12 @@ export async function updateSurplusOffer(
   if (updates.pickupWindowStart) $set.pickupWindowStart = toDate(updates.pickupWindowStart, 'pickupWindowStart')
   if (updates.pickupWindowEnd) $set.pickupWindowEnd = toDate(updates.pickupWindowEnd, 'pickupWindowEnd')
   if (typeof updates.pickupAddress === 'string') $set.pickupAddress = updates.pickupAddress
-  if (updates.geoLocation) $set.geoLocation = updates.geoLocation
+  if (updates.geoLocation !== undefined) {
+    $set.geoLocation = normalizeGeoLocation(updates.geoLocation)
+  }
   if (updates.expiryDateTime) $set.expiryDateTime = toDate(updates.expiryDateTime, 'expiryDateTime')
   if (updates.status && SURPLUS_STATUSES.includes(updates.status)) $set.status = updates.status
 
-  const result = await surplus.findOneAndUpdate<SurplusOfferDocument>({ _id: id }, { $set }, { returnDocument: 'after' })
-  return result.value ? mapSurplusOffer(result.value) : null
+  const updated = await surplus.findOneAndUpdate({ _id: id }, { $set }, { returnDocument: 'after' })
+  return updated ? mapSurplusOffer(updated) : null
 }

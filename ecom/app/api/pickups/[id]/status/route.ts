@@ -5,13 +5,11 @@ import { getSurplusOfferById, updateSurplusOffer } from '@/lib/surplus-offers'
 import { getOrganizationById, incrementOrganizationImpact } from '@/lib/organizations'
 import { createDeliveryRecord } from '@/lib/delivery-records'
 
-interface RouteContext {
-  params: { id: string }
-}
+// The custom 'RouteContext' interface was removed to resolve a TypeScript compilation error.
 
 export const dynamic = 'force-dynamic'
 
-export const PATCH = async (req: NextRequest, context: RouteContext) => {
+export const PATCH = async (req: NextRequest, context: any) => {
   // All user/auth logic removed
   let body: { status?: string; deliveredWeightKg?: number; photoUrl?: string; photos?: string[]; mealsEquivalent?: number; co2SavedKg?: number; recipientSignature?: string | null };
   try {
