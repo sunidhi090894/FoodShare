@@ -57,13 +57,30 @@ export async function createSurplusRequest(
   userId: ObjectId
 ) {
   const requests = await getCollection<SurplusRequestDocument>('surplus_requests')
-  const existing = await requests.findOne({
+  
+  // Check if user has already requested this offer
+  const userRequest = await requests.findOne({
     surplusId: surplus._id,
     requestedByUserId: userId,
   })
 
-  if (existing) {
+  if (userRequest) {
     throw new Error('You have already requested this offer.')
+  }
+
+  // Check if any approved request exists for this surplus from same city (only one recipient per city allowed)
+  const existingApprovedRequest = await requests.findOne({
+    surplusId: surplus._id,
+    status: 'APPROVED',
+  })
+
+  if (existingApprovedRequest) {
+    console.log(`Checking if existing approved request is from same city as current recipient`)
+    const existingRecipientOrg = await getOrganizationById(existingApprovedRequest.recipientOrgId)
+    
+    if (existingRecipientOrg && existingRecipientOrg.city.toLowerCase() === recipientOrganization.city.toLowerCase()) {
+      throw new Error('Another organization from the same city has already been approved for this offer.')
+    }
   }
 
   const now = new Date()
@@ -80,6 +97,7 @@ export async function createSurplusRequest(
   console.log('Creating surplus request with data:', {
     surplusId: doc.surplusId.toString(),
     recipientOrgId: doc.recipientOrgId.toString(),
+    recipientCity: recipientOrganization.city,
     requestedByUserId: doc.requestedByUserId.toString(),
     status: doc.status,
   })

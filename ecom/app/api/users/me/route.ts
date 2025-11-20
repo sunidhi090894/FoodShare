@@ -7,13 +7,22 @@ export async function GET() {
     const cookieStore = await cookies()
     const userId = cookieStore.get('userId')?.value
 
+    console.log('📖 [GET /api/users/me] userId from cookie:', userId)
+
     if (!userId) {
+      console.log('📖 [GET /api/users/me] ✗ No userId in cookie')
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
     const user = await getUserById(userId)
+    console.log('📖 [GET /api/users/me] ✓ User fetched from DB')
+    console.log('   - User._id:', (user as any)?._id?.toString?.())
+    console.log('   - User.email:', (user as any)?.email)
+    console.log('   - User.organizationId:', (user as any)?.organizationId?.toString?.() || (user as any)?.organizationId)
+    console.log('   - User.organization:', (user as any)?.organization)
 
     if (!user) {
+      console.log('📖 [GET /api/users/me] ✗ User not found in database')
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
@@ -34,7 +43,7 @@ export async function GET() {
         ? rest.updatedAt.toISOString()
         : rest.updatedAt ?? null
 
-    return NextResponse.json({
+    const response = {
       id: _id?.toString(),
       email: rest.email ?? null,
       name: rest.name ?? null,
@@ -48,9 +57,15 @@ export async function GET() {
       availability: rest.availability ?? null,
       createdAt,
       updatedAt,
-    })
+    }
+
+    console.log('📖 [GET /api/users/me] ✓ Returning user response:')
+    console.log('   - organization:', response.organization)
+    console.log('   - organizationId:', response.organizationId)
+
+    return NextResponse.json(response)
   } catch (error) {
-    console.error('GET /api/users/me failed:', error)
+    console.error('📖 [GET /api/users/me] ✗ Failed:', error)
     return NextResponse.json({ error: 'Failed to load user profile' }, { status: 500 })
   }
 }

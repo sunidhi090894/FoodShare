@@ -78,6 +78,7 @@ export default function DonorPage() {
   const [organization, setOrganization] = useState<{ city: string; name: string } | null>(null)
   const [fetchError, setFetchError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [isAuthorized, setIsAuthorized] = useState(false)
   const [offers, setOffers] = useState<ActiveOffer[]>([])
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [isCreating, setIsCreating] = useState(false)
@@ -107,46 +108,83 @@ export default function DonorPage() {
   useEffect(() => {
     const loadProfile = async () => {
       try {
+        console.log('📱 [DONOR] Loading user profile on page load...')
         const res = await fetch('/api/users/me')
         if (!res.ok) {
           throw new Error('Unable to load your profile.')
         }
         const data = await res.json()
+        console.log('📱 [DONOR] User profile loaded:', data)
+        console.log('   - User organization field:', data.organization)
+        console.log('   - User organizationId field:', data.organizationId)
+        
+        // Verify user is a DONOR before setting state
+        if (data.role !== 'DONOR') {
+          console.error('User is not a DONOR, redirecting...')
+          router.replace('/dashboard')
+          return
+        }
+        
         setUser(data)
+        setIsAuthorized(true)
         
         // Auto-fill pickup address with organization address
         if (data.organizationId) {
           try {
+            console.log('📱 [DONOR] ✓ User has organizationId, fetching organization:', data.organizationId)
             const orgRes = await fetch(`/api/organizations/${data.organizationId}`)
             if (orgRes.ok) {
               const orgData = await orgRes.json()
+              console.log('📱 [DONOR] ✓ Organization fetched successfully:', orgData)
               setOrganization({ city: orgData.city, name: orgData.name })
+              // Set form fields with organization data
+              setOrgName(orgData.name)
+              setOrgAddress(orgData.address)
+              setOrgCity(orgData.city)
               setPickupAddress(`${orgData.address}, ${orgData.city}`)
+            } else {
+              console.warn('📱 [DONOR] ✗ Failed to fetch organization:', orgRes.status)
             }
           } catch (error) {
-            console.error('Failed to fetch organization:', error)
+            console.error('📱 [DONOR] ✗ Failed to fetch organization:', error)
           }
+        } else {
+          console.log('📱 [DONOR] ✗ User has no organization set yet')
         }
         
         loadOffers()
       } catch (error) {
         setFetchError(error instanceof Error ? error.message : 'Failed to load profile.')
+        console.error('📱 [DONOR] ✗ Error loading profile:', error)
       } finally {
         setLoading(false)
       }
     }
     loadProfile()
+    
+    // Auto-refresh offers every 5 seconds to show real-time updates
+    const interval = setInterval(loadOffers, 5000)
+    
+    return () => clearInterval(interval)
   }, [])
 
   const loadOffers = async () => {
     try {
       const res = await fetch('/api/surplus/my')
-      if (res.ok) {
-        const data = await res.json()
-        setOffers(data)
+      if (!res.ok) {
+        const errorData = await res.json()
+        console.error('Failed to load offers:', errorData)
+        setFetchError(`Failed to load offers: ${errorData.error || 'Unknown error'}`)
+        setOffers([])
+        return
       }
+      const data = await res.json()
+      console.log('Loaded offers:', data)
+      setOffers(Array.isArray(data) ? data : [])
     } catch (error) {
       console.error('Failed to load offers:', error)
+      setFetchError(error instanceof Error ? error.message : 'Failed to load offers')
+      setOffers([])
     }
   }
 
@@ -174,6 +212,8 @@ export default function DonorPage() {
         throw new Error('Please fill in all organization fields')
       }
 
+      console.log('Creating organization:', { orgName, orgAddress, orgCity })
+
       const res = await fetch('/api/organizations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -189,22 +229,37 @@ export default function DonorPage() {
         throw new Error(data.error || 'Failed to create organization')
       }
 
-      setShowOrgForm(false)
-      setOrgName('')
-      setOrgAddress('')
-      setOrgCity('')
+      const orgData = await res.json()
+      console.log('Organization created successfully:', orgData)
 
-      // Reload user to get updated organization
+      // Update local state with organization
+      setOrganization({ city: orgData.city, name: orgData.name })
+      setPickupAddress(`${orgData.address}, ${orgData.city}`)
+
+      // Reload user to get updated organization link
+      console.log('🔄 Reloading user data...')
       const userRes = await fetch('/api/users/me')
       if (userRes.ok) {
         const userData = await userRes.json()
+        console.log('User updated:', userData)
+        console.log('   Organization field:', userData.organization)
+        console.log('   OrganizationId field:', userData.organizationId)
         setUser(userData)
+      } else {
+        console.error('Failed to reload user:', userRes.status)
       }
 
+      setShowOrgForm(false)
+      // Clear form fields
+      setOrgName('')
+      setOrgAddress('')
+      setOrgCity('')
+      
       alert('Organization created successfully!')
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : 'Failed to create organization'
       setFetchError(errorMsg)
+      console.error('Organization creation error:', errorMsg)
     } finally {
       setIsCreatingOrg(false)
     }
@@ -217,13 +272,19 @@ export default function DonorPage() {
     
     try {
       // Validate form
-      if (!items[0]?.name || !pickupWindowStart || !pickupWindowEnd || !pickupAddress) {
+      if (!items[0]?.name || !pickupWindowStart || !pickupWindowEnd) {
         throw new Error('Please fill in all required fields')
       }
 
       // Check if user has organization
       if (!user?.organization) {
         throw new Error('Please set up your organization first before creating surplus offers')
+      }
+
+      // Ensure pickup address is from organization (auto-extracted)
+      const finalPickupAddress = pickupAddress || `${organization?.city || 'Unknown'}`
+      if (!finalPickupAddress) {
+        throw new Error('Unable to extract pickup address from organization profile')
       }
 
       const payload = {
@@ -237,7 +298,7 @@ export default function DonorPage() {
         })),
         pickupWindowStart,
         pickupWindowEnd,
-        pickupAddress,
+        pickupAddress: finalPickupAddress, // Always use organization address
       }
 
       console.log('Sending payload:', payload)
@@ -274,6 +335,12 @@ export default function DonorPage() {
   }
 
   const handleViewRequests = async (offer: ActiveOffer) => {
+    // Check authorization before making request
+    if (!isAuthorized) {
+      alert('You are not authorized to view requests. Please refresh the page.')
+      return
+    }
+
     setSelectedOffer(offer)
     setShowRequestsModal(true)
     setLoadingRequests(true)
@@ -329,6 +396,11 @@ export default function DonorPage() {
   }
 
   const handleApproveRequest = async (requestId: string) => {
+    if (!isAuthorized) {
+      alert('You are not authorized to approve requests. Please refresh the page.')
+      return
+    }
+
     try {
       const res = await fetch(`/api/requests/${requestId}`, {
         method: 'PATCH',
@@ -407,55 +479,51 @@ export default function DonorPage() {
     }
   }
 
-  // Count only OPEN offers posted today with detailed breakdown
+  // Count total surplus orders created TODAY by the organization
   const todayOffers = (() => {
     const now = new Date()
     const todayOffersList = offers.filter((offer) => {
       const start = new Date(offer.pickupWindowStart)
-      return start.toDateString() === now.toDateString() && offer.status === 'OPEN'
+      return start.toDateString() === now.toDateString()
     })
     return todayOffersList.length
   })()
 
-  // Total active (OPEN) offers
-  const activeOffers = offers.filter(o => o.status === 'OPEN').length
-
-  // Actual Waste Saved Today - count completed offers from today
-  const todayCompletedOffers = offers.filter(offer => {
+  // Actual Waste Saved Today - only MATCHED status offers
+  const matchedOffers = offers.filter(offer => offer.status === 'MATCHED')
+  const todayMatchedOffers = matchedOffers.filter(offer => {
     const now = new Date()
     const start = new Date(offer.pickupWindowStart)
-    return start.toDateString() === now.toDateString() && offer.status === 'FULFILLED'
+    return start.toDateString() === now.toDateString()
   })
-  const actualWasteSavedToday = todayCompletedOffers.reduce((total, offer) => {
+  const actualWasteSavedToday = todayMatchedOffers.reduce((total, offer) => {
     const weight = offer.items.reduce((sum, item) => {
       return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
     }, 0)
     return total + weight
   }, 0)
 
-  // Meals: 1 kg = 2.2 meals (from all delivered offers)
-  const deliveredOffers = offers.filter(o => o.status === 'FULFILLED')
-  const mealsThisMonth = deliveredOffers.reduce((total, offer) => {
+  // Meals: 1 kg = 2.2 meals (from MATCHED offers only)
+  const mealsThisMonth = matchedOffers.reduce((total, offer) => {
     const totalWeight = offer.items.reduce((sum, item) => {
-      return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5)) // assume 0.5kg per unit for non-kg items
+      return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
     }, 0)
     return total + Math.round(totalWeight * 2.2)
   }, 0)
 
-  // CO₂: 1 kg food waste prevented = 1.8 kg CO₂ saved
-  const co2SavedThisMonth = deliveredOffers.reduce((total, offer) => {
+  // CO₂: 1 kg food waste prevented = 1.8 kg CO₂ saved (from MATCHED offers only)
+  const co2SavedThisMonth = matchedOffers.reduce((total, offer) => {
     const totalWeight = offer.items.reduce((sum, item) => {
       return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
     }, 0)
     return total + Math.round(totalWeight * 1.8)
   }, 0)
 
-  // Predictive Analytics: Estimate food waste prevention using Linear Regression + Seasonality
-  // ML Algorithm: Time-series forecasting with day-of-week patterns
+  // Predictive Analytics: ML Algorithm with 7 Steps
   const calculateFoodWastePrevention = () => {
-    if (offers.length === 0) return { savedWeight: 0, savedMeals: 0, confidence: 0 }
+    if (offers.length === 0) return { savedWeight: 0, savedMeals: 0, savedCO2: 0, confidence: 0 }
 
-    // Step 1: Extract features from historical data
+    // STEP 1: Learn from Historical Data - Group offers by day of week
     const offersByDayOfWeek: Record<number, number[]> = {}
     offers.forEach(offer => {
       const date = new Date(offer.pickupWindowStart)
@@ -470,7 +538,7 @@ export default function DonorPage() {
       offersByDayOfWeek[dayOfWeek].push(weight)
     })
 
-    // Step 2: Calculate average weight per day-of-week using regression
+    // STEP 2: Calculate Today's Baseline Average
     const today = new Date().getDay()
     const todayWeights = offersByDayOfWeek[today] || []
     const avgWeightToday = todayWeights.length > 0
@@ -482,12 +550,13 @@ export default function DonorPage() {
           return total + weight
         }, 0) / Math.max(offers.length, 1)
 
-    // Step 3: Apply weighting factors
-    // - Weekday multiplier (Mon-Fri: 0.75x, Sat-Sun: 1.25x)
-    const isWeekday = today >= 1 && today <= 5
-    const weekdayMultiplier = isWeekday ? 0.75 : 1.25
+    // STEP 3: Apply Seasonality (Weekday vs Weekend) - CORRECTED MULTIPLIERS
+    // Weekends (Sat=6, Sun=0): 1.25 multiplier
+    // Weekdays (Mon-Fri=1-5): 0.85 multiplier
+    const isWeekend = today === 0 || today === 6
+    const seasonalityMultiplier = isWeekend ? 1.25 : 0.85
     
-    // - Growth trend: newer offers tend to be larger
+    // STEP 4: Check Trend (last 5 offers)
     const recentOffers = offers.slice(-5)
     const recentAvg = recentOffers.reduce((total, offer) => {
       const weight = offer.items.reduce((sum, item) => {
@@ -495,12 +564,12 @@ export default function DonorPage() {
       }, 0)
       return total + weight
     }, 0) / Math.max(recentOffers.length, 1)
-    const trendMultiplier = recentAvg > 0 ? (recentAvg / avgWeightToday) * 0.5 + 0.5 : 1
+    const trendMultiplier = recentAvg > 0 && avgWeightToday > 0 ? (recentAvg / avgWeightToday) * 0.5 + 0.5 : 1
 
-    // Step 4: Predict today's food surplus
-    const predictedWeight = Math.round(avgWeightToday * weekdayMultiplier * trendMultiplier)
+    // STEP 5: Predict Today's Waste + Add Real-Time Data
+    const historicalPrediction = Math.round(avgWeightToday * seasonalityMultiplier * trendMultiplier)
     
-    // Step 5: Add today's actual offers to prediction
+    // Add today's actual offers already posted
     const todayActualWeight = offers
       .filter(offer => {
         const start = new Date(offer.pickupWindowStart)
@@ -513,18 +582,16 @@ export default function DonorPage() {
         return total + weight
       }, 0)
 
-    const totalPredictedWeight = predictedWeight + todayActualWeight
+    const totalPredictedWeight = historicalPrediction + todayActualWeight
 
-    // Step 6: Calculate waste prevention
-    // Assumption: 1 kg food shared = 1 kg food waste prevented
-    // Environmental impact: 1 kg food waste prevented = 1.8 kg CO2 equivalent avoided
+    // STEP 6: Confidence Score
+    // 90% + (2% × number of data points) capped at 95%
+    const confidence = Math.min(90 + Math.floor(todayWeights.length * 2), 95)
+
+    // STEP 7: Calculate meals and CO₂ saved
     const savedWeight = totalPredictedWeight
     const savedMeals = Math.round(totalPredictedWeight * 2.2)
     const savedCO2 = Math.round(totalPredictedWeight * 1.8)
-
-    // Step 7: Calculate confidence score
-    // More data = higher confidence (max 95%)
-    const confidence = Math.min(90 + Math.floor(todayWeights.length * 2), 95)
 
     return { savedWeight, savedMeals, savedCO2, confidence }
   }
@@ -535,19 +602,19 @@ export default function DonorPage() {
     {
       label: "Today's Surplus Posted",
       value: todayOffers.toString(),
-      helper: `${activeOffers} active pickup window`,
+      helper: `Total orders created today by your organization`,
       icon: Package,
     },
     {
       label: 'Actual Waste Saved Today',
       value: `${Math.round(actualWasteSavedToday)} kg`,
-      helper: `${todayCompletedOffers.length} completed pickup${todayCompletedOffers.length !== 1 ? 's' : ''}`,
+      helper: `${todayMatchedOffers.length} matched order${todayMatchedOffers.length !== 1 ? 's' : ''}`,
       icon: CheckCircle2,
     },
     {
       label: 'Predicted Waste Saved Today',
       value: `${wastePrevention.savedWeight} kg`,
-      helper: `ML: ${wastePrevention.confidence}% confidence`,
+      helper: 'ML-based prediction',
       icon: Leaf,
     },
     {
@@ -750,9 +817,12 @@ export default function DonorPage() {
                 <Input
                   placeholder="Full address for pickup"
                   value={pickupAddress}
-                  onChange={(e) => setPickupAddress(e.target.value)}
+                  readOnly
+                  disabled
+                  className="bg-[#f0e3d1] cursor-not-allowed"
                   required
                 />
+                <p className="text-xs text-[#8c7b6b] mt-1">ℹ️ Auto-extracted from your organization profile</p>
               </div>
 
               <div className="flex gap-3 justify-end">
@@ -869,7 +939,7 @@ export default function DonorPage() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-[#4a1f1f]">Impact & History</h2>
-              <p className="text-sm text-[#6b4d3c]">Completed Donations</p>
+              <p className="text-sm text-[#6b4d3c]">Matched Donations</p>
             </div>
             <Button variant="outline" className="text-[#8c3b3c] border-[#8c3b3c]" size="sm">
               <Download className="w-4 h-4 mr-2" />
@@ -877,8 +947,8 @@ export default function DonorPage() {
             </Button>
           </div>
 
-          {deliveredOffers.length === 0 ? (
-            <p className="text-center text-[#6b4d3c] py-8">No completed donations yet.</p>
+          {matchedOffers.length === 0 ? (
+            <p className="text-center text-[#6b4d3c] py-8">No matched donations yet.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -892,8 +962,8 @@ export default function DonorPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#f0e3d1]">
-                  {deliveredOffers.map((offer) => {
-                    const totalWeight = offer.items.reduce((sum, item) => {
+                  {matchedOffers.map((offer) => {
+                    const totalWeight = offer.items.reduce((sum: number, item: SurplusItem) => {
                       return sum + (item.quantity * (item.unit === 'kg' ? 1 : 0.5))
                     }, 0)
                     const meals = Math.round(totalWeight * 2.2)
@@ -906,7 +976,7 @@ export default function DonorPage() {
                           {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </td>
                         <td className="py-4 text-[#6b4d3c]">
-                          {offer.items.map(i => `${i.name}`).join(', ')} ({meals} meals)
+                          {offer.items.map((i: SurplusItem) => `${i.name}`).join(', ')} ({meals} meals)
                         </td>
                         <td className="py-4 text-[#6b4d3c]">
                           {offer.recipientOrgName || 'Recipient Org'}

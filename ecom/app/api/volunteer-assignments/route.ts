@@ -1,6 +1,9 @@
 import { connectToDatabase } from '@/lib/mongodb'
 import { ObjectId } from 'mongodb'
 
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
@@ -18,7 +21,17 @@ export async function GET(request: Request) {
           $or: [{ status: 'ASSIGNED' }, { status: 'ACCEPTED' }, { status: 'COMPLETED' }],
         })
         .toArray()
-      return Response.json(result)
+      
+      const response = new Response(JSON.stringify(result), {
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
+        }
+      })
+      
+      return response
     }
 
     return Response.json([])

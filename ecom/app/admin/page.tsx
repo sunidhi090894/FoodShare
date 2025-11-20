@@ -5,9 +5,6 @@ import {
   ShieldCheck,
   Users,
   Utensils,
-  Activity,
-  ClipboardList,
-  Download,
   UserCheck,
   Leaf,
 } from 'lucide-react'
@@ -25,154 +22,75 @@ interface User {
   organization?: string
 }
 
-interface PendingOrganization {
-  id: string
-  name: string
-  type: 'Donor' | 'Recipient'
-  city: string
-  submittedBy: string
-  documents: string[]
-}
-
-interface SurplusRow {
-  id: string
-  donor: string
-  city: string
+interface VolunteerAssignment {
+  _id: string
+  status: 'ASSIGNED' | 'ACCEPTED' | 'COMPLETED'
+  donorOrg: string
   items: string
-  status: 'OPEN' | 'MATCHED' | 'EXPIRED'
-  expiry: string
-  expiryRisk: 'LOW' | 'MEDIUM' | 'HIGH'
+  donorCity: string
 }
 
-interface RequestRow {
-  id: string
-  recipient: string
-  surplus: string
-  status: 'PENDING' | 'APPROVED' | 'REJECTED'
-}
-
-interface VolunteerNeed {
-  id: string
-  donorLocation: string
-  recipientLocation: string
-  window: string
-  volunteers: string[]
-}
-
-const initialPendingOrgs: PendingOrganization[] = [
-  {
-    id: 'ORG-120',
-    name: 'Sunrise Café',
-    type: 'Donor',
-    city: 'Mumbai',
-    submittedBy: 'anika@sunrise.com',
-    documents: ['GST certificate', 'FSSAI license'],
-  },
-  {
-    id: 'ORG-121',
-    name: 'City Hope Shelter',
-    type: 'Recipient',
-    city: 'Hyderabad',
-    submittedBy: 'rahul@cityhope.org',
-    documents: ['12A certificate'],
-  },
-]
-
-const surplusMonitoring: SurplusRow[] = [
-  {
-    id: 'FS-4821',
-    donor: 'Spice Route Café',
-    city: 'Mumbai',
-    items: 'Biryani trays (30)',
-    status: 'OPEN',
-    expiry: 'Today · 6:00 PM',
-    expiryRisk: 'MEDIUM',
-  },
-  {
-    id: 'FS-4818',
-    donor: 'Night Owl Bakery',
-    city: 'Delhi',
-    items: 'Pastries (25)',
-    status: 'MATCHED',
-    expiry: 'Pickup 8:00 PM',
-    expiryRisk: 'LOW',
-  },
-  {
-    id: 'FS-4801',
-    donor: 'Fresh Greens',
-    city: 'Pune',
-    items: 'Salad bowls (18)',
-    status: 'EXPIRED',
-    expiry: 'Expired 10:00 AM',
-    expiryRisk: 'HIGH',
-  },
-]
-
-const requestsMonitoring: RequestRow[] = [
-  { id: 'REQ-901', recipient: 'Hope Shelter', surplus: 'Biryani trays', status: 'PENDING' },
-  { id: 'REQ-880', recipient: 'Care Foundation', surplus: 'Salad bowls', status: 'APPROVED' },
-  { id: 'REQ-812', recipient: 'Night Shelter', surplus: 'Pastry boxes', status: 'REJECTED' },
-]
-
-const expiryRiskVariant: Record<'LOW' | 'MEDIUM' | 'HIGH', 'success' | 'warning' | 'destructive'> = {
-  LOW: 'success',
-  MEDIUM: 'warning',
-  HIGH: 'destructive',
-}
+const initialPendingOrgs: any[] = []
 
 export default function AdminDataPage() {
   useProtectedRoute('ADMIN')
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [pendingOrgs, setPendingOrgs] = useState(initialPendingOrgs)
+  const [totalMealsRescued, setTotalMealsRescued] = useState(0)
 
   useEffect(() => {
-    const fetchUsers = async () => {
+    const fetchData = async () => {
       setLoading(true)
       setError('')
       try {
-        const res = await fetch('/api/admin/users')
-        if (!res.ok) {
+        // Fetch users
+        const usersRes = await fetch('/api/admin/users')
+        if (!usersRes.ok) {
           throw new Error('Failed to fetch users')
         }
-        const data = await res.json()
-        setUsers(data)
+        const userData = await usersRes.json()
+        setUsers(userData)
+
+        // Calculate total meals rescued from all completed volunteer assignments
+        try {
+          const response = await fetch('/api/volunteer-assignments')
+          if (response.ok) {
+            const assignments: VolunteerAssignment[] = await response.json()
+            // Count completed assignments and calculate meals
+            const meals = assignments
+              .filter(a => a.status === 'COMPLETED')
+              .reduce((total, assignment) => {
+                // Parse items string to extract quantities
+                // Example: "10 kg Biryani, 5 kg Rice"
+                const quantities = (assignment.items.match(/\d+/g) || []).map(Number)
+                const itemMeals = quantities.reduce((sum, qty) => sum + Math.round(qty * 2.2), 0)
+                return total + itemMeals
+              }, 0)
+            setTotalMealsRescued(meals)
+          }
+        } catch (err) {
+          console.error('Failed to fetch volunteer assignments:', err)
+        }
       } catch (err: any) {
-        setError(err.message || 'Error loading users')
+        setError(err.message || 'Error loading data')
       } finally {
         setLoading(false)
       }
     }
-    fetchUsers()
+    fetchData()
   }, [])
 
-  const handleOrgDecision = (orgId: string) => {
-    setPendingOrgs((prev) => prev.filter((org) => org.id !== orgId))
-  }
-
-  // Calculate actual counts from users array and other data
+  // Calculate actual counts from users array
   const donorCount = users.filter(u => u.role === 'DONOR').length
   const recipientCount = users.filter(u => u.role === 'RECIPIENT').length
   const volunteerCount = users.filter(u => u.role === 'VOLUNTEER').length
-  const pendingOrgCount = pendingOrgs.length
-
-  // Calculate meals from surplus monitoring (matched offers)
-  const mealsRescued = surplusMonitoring
-    .filter(s => s.status === 'MATCHED')
-    .reduce((total, s) => {
-      const quantity = parseInt(s.items.match(/\d+/)?.[0] || '0')
-      return total + Math.round(quantity * 2.2) // 1kg = 2.2 meals
-    }, 0)
-
-  // Count today's surplus offers
-  const todaySurplusCount = surplusMonitoring.filter(s => s.status === 'OPEN').length
 
   const summaryCards = [
     {
       label: 'Total Meals Rescued',
-      value: mealsRescued.toLocaleString(),
-      helper: 'From completed deliveries',
+      value: totalMealsRescued.toLocaleString(),
+      helper: 'From all completed deliveries',
       icon: Utensils,
     },
     {
@@ -182,14 +100,8 @@ export default function AdminDataPage() {
       icon: Users,
     },
     {
-      label: 'Surplus Offers Today',
-      value: todaySurplusCount.toString(),
-      helper: 'Posted today',
-      icon: Activity,
-    },
-    {
-      label: 'CO₂ Saved This Month',
-      value: '12.4 tons',
+      label: 'CO₂ Saved Total',
+      value: `${Math.round(totalMealsRescued * 1.8 / 2.2)} kg`,
       helper: '1 kg food = 1.8 kg CO₂ avoided',
       icon: Leaf,
     },
@@ -215,12 +127,12 @@ export default function AdminDataPage() {
               Monitor the entire AaharSetu network
             </h2>
             <p className="text-[#6b4d3c] max-w-3xl mx-auto mt-2">
-              Approve organizations, oversee surplus, coordinate volunteers, and keep impact analytics up to date.
+              Oversee donors, recipients, volunteers, and track overall impact metrics.
             </p>
           </div>
         </header>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {summaryCards.map((card) => {
             const Icon = card.icon
             return (
@@ -235,45 +147,6 @@ export default function AdminDataPage() {
             )
           })}
         </div>
-
-        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-5">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-[#4a1f1f]">Pending Approvals</h2>
-              <p className="text-sm text-[#6b4d3c]">Review new organizations and role change requests.</p>
-            </div>
-            <Badge variant="secondary">{pendingOrgs.length} awaiting review</Badge>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            {pendingOrgs.map((org) => (
-              <Card key={org.id} className="border border-[#d9c7aa] bg-[#fffdf9] p-5 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs uppercase text-[#8c3b3c] tracking-wide">{org.id}</p>
-                    <h3 className="text-lg font-semibold text-[#4a1f1f]">{org.name}</h3>
-                  </div>
-                  <Badge variant="outline">{org.type}</Badge>
-                </div>
-                <p className="text-sm text-[#6b4d3c]">
-                  {org.city} • Submitted by {org.submittedBy}
-                </p>
-                <ul className="text-sm text-[#6b4d3c] list-disc pl-4">
-                  {org.documents.map((doc) => (
-                    <li key={doc}>{doc}</li>
-                  ))}
-                </ul>
-                <div className="flex gap-2">
-                  <Button size="sm" className="bg-[#8c3b3c] hover:bg-[#732f30]" onClick={() => handleOrgDecision(org.id)}>
-                    Approve
-                  </Button>
-                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => handleOrgDecision(org.id)}>
-                    Reject
-                  </Button>
-                </div>
-              </Card>
-            ))}
-          </div>
-        </Card>
 
         <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
           <div className="flex items-center gap-3">

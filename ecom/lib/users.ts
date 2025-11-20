@@ -109,6 +109,12 @@ export async function updateUserOrganizationLink(
   role?: UserRole | null,
   organizationName?: string | null
 ) {
+  console.log('👤 [LIB] updateUserOrganizationLink called')
+  console.log('   - userId:', userId.toHexString())
+  console.log('   - organizationId:', organizationId?.toHexString?.() || organizationId)
+  console.log('   - role:', role)
+  console.log('   - organizationName:', organizationName)
+
   const users = await getCollection<UserDocument>('users')
   const updates: Record<string, unknown> = {
     updatedAt: new Date(),
@@ -123,10 +129,24 @@ export async function updateUserOrganizationLink(
     updates.organization = organizationName
   }
 
-  await users.updateOne(
+  console.log('👤 [LIB] About to update user document with:', updates)
+
+  const result = await users.updateOne(
     { _id: userId },
     {
       $set: updates,
     }
   )
+
+  console.log('👤 [LIB] ✓ Update result:', {
+    matchedCount: result.matchedCount,
+    modifiedCount: result.modifiedCount,
+    acknowledged: result.acknowledged,
+  })
+
+  // Verify the update
+  const updatedUser = await users.findOne({ _id: userId })
+  console.log('👤 [LIB] ✓ Verified user after update:')
+  console.log('   - organizationId:', updatedUser?.organizationId?.toHexString?.() || updatedUser?.organizationId)
+  console.log('   - organization:', (updatedUser as any)?.organization)
 }

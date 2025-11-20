@@ -107,6 +107,11 @@ function sanitizePayload<T extends Partial<OrganizationPayload>>(
 }
 
 export async function createOrganizationForUser(user: UserDocument, payload: OrganizationPayload) {
+  console.log('📦 [LIB] createOrganizationForUser called')
+  console.log('   - User ID:', user._id.toHexString())
+  console.log('   - User role:', user.role)
+  console.log('   - Payload:', payload)
+
   const organizations = await getCollection<OrganizationDocument>('organizations')
   const now = new Date()
   const data = sanitizePayload(payload, 'DONOR')
@@ -129,8 +134,20 @@ export async function createOrganizationForUser(user: UserDocument, payload: Org
     updatedAt: now,
   }
 
+  console.log('📦 [LIB] Inserting organization document:', document._id.toHexString())
   await organizations.insertOne(document)
-  await updateUserOrganizationLink(user._id, document._id, data.type as UserRole, data.name)
+  console.log('📦 [LIB] ✓ Organization inserted successfully')
+
+  // DO NOT change user role - just link the organization
+  // Users keep their original role (DONOR or RECIPIENT)
+  console.log('📦 [LIB] Calling updateUserOrganizationLink with:')
+  console.log('   - userId:', user._id.toHexString())
+  console.log('   - organizationId:', document._id.toHexString())
+  console.log('   - roleToUpdate: null (keeping user role as:', user.role, ')')
+  console.log('   - organizationName:', data.name)
+
+  await updateUserOrganizationLink(user._id, document._id, null, data.name)
+  console.log('📦 [LIB] ✓ User organization link updated (role unchanged)')
 
   return mapOrganization(document)
 }

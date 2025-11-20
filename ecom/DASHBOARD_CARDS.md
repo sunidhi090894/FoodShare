@@ -62,7 +62,7 @@ const actualWasteSavedToday = todayCompletedOffers.reduce((total, offer) => {
 ### 3️⃣ Predicted Waste Saved Today
 **Icon**: 🌱 Leaf
 **Value**: ML-predicted weight for today (kg)
-**Helper**: Confidence score (90-95%)
+**Helper**: ML-based prediction
 
 **Calculation**: Uses 7-step ML algorithm with:
 - Day-of-week seasonality (weekday: ×0.75, weekend: ×1.25)
@@ -70,7 +70,7 @@ const actualWasteSavedToday = todayCompletedOffers.reduce((total, offer) => {
 - Historical baseline averages
 - Real-time offer integration
 
-**Example**: "42 kg" with "ML: 92% confidence"
+**Example**: "42 kg" with "ML-based prediction"
 
 ---
 

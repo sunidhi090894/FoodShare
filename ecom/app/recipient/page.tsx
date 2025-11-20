@@ -140,7 +140,13 @@ export default function RecipientPortal() {
         setLoading(false)
       }
     }
+    
     loadData()
+    
+    // Auto-refresh every 5 seconds to show real-time updates
+    const interval = setInterval(loadData, 5000)
+    
+    return () => clearInterval(interval)
   }, [])
 
   const handleRequestSurplus = async (offerId: string) => {

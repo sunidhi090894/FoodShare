@@ -35,11 +35,16 @@ export const POST = async (req: NextRequest) => {
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 })
     }
 
+    console.log('📝 Creating surplus offer for user:', userId)
+    console.log('   Organization:', user.organizationId)
+    console.log('   Payload items:', payload.items?.length)
+
     const newOffer = await createSurplusOffer(user, organization, payload)
 
+    console.log('✅ Surplus offer created:', newOffer.id)
     return NextResponse.json(newOffer, { status: 201 })
   } catch (error) {
-    console.error('Error creating surplus offer', error)
+    console.error('❌ Error creating surplus offer', error)
     const message = error instanceof Error ? error.message : 'Unable to create offer'
     return NextResponse.json({ error: message }, { status: 500 })
   }

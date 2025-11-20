@@ -152,7 +152,17 @@ export async function createSurplusOffer(
     updatedAt: now,
   }
 
+  console.log('💾 Inserting surplus offer to MongoDB:', {
+    _id: doc._id.toHexString(),
+    createdByUserId: doc.createdByUserId.toHexString(),
+    organizationId: doc.organizationId.toHexString(),
+    items_count: doc.items.length
+  })
+
   await surplus.insertOne(doc)
+  
+  console.log('✅ Inserted successfully')
+  
   return mapSurplusOffer(doc, organization)
 }
 
@@ -175,15 +185,26 @@ export async function listSurplusOffersForUser(userId: ObjectId, status?: Surplu
   if (status && SURPLUS_STATUSES.includes(status)) {
     filter.status = status
   }
+  
+  console.log('🔍 Database query filter:', {
+    createdByUserId: userId.toHexString(),
+    status: status || 'any'
+  })
+
   const docs = await surplus
     .find(filter)
     .sort({ createdAt: -1 })
     .toArray()
 
+  console.log(`📊 Query returned ${docs.length} documents`)
+  if (docs.length > 0) {
+    console.log('   First doc createdByUserId:', docs[0].createdByUserId?.toHexString?.() || docs[0].createdByUserId)
+  }
+
   return docs.map((doc) => mapSurplusOffer(doc))
 }
 
-export async function listOpenSurplusOffers(filters?: { city?: string }) {
+export async function listOpenSurplusOffers(filters?: { city?: string; limit?: number }) {
   const surplus = await getCollection<SurplusOfferDocument>('surplus_offers')
   const docs = await surplus
     .find({ status: 'OPEN' })
@@ -195,6 +216,10 @@ export async function listOpenSurplusOffers(filters?: { city?: string }) {
   return docs
     .filter((doc) => {
       if (!filters?.city) return true
+      // Match by donorCity field or organization city
+      if (doc.donorCity && doc.donorCity.toLowerCase() === filters.city.toLowerCase()) {
+        return true
+      }
       const org = orgMap.get(doc.organizationId.toHexString())
       return org ? org.city?.toLowerCase() === filters.city.toLowerCase() : false
     })

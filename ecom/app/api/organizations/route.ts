@@ -13,20 +13,36 @@ export const POST = async (req: NextRequest) => {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    console.log('🔍 Creating organization for user:', userId)
+
     const user = await getUserDocumentById(userId)
     if (!user) {
+      console.log('❌ User not found:', userId)
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     if (user.organizationId) {
+      console.log('❌ User already has organization:', user.organizationId.toHexString())
       return NextResponse.json({ error: 'User already belongs to an organization' }, { status: 400 })
     }
 
     const body = (await req.json()) as OrganizationPayload
+    console.log('📦 Organization data:', body)
+    
     const newOrganization = await createOrganizationForUser(user, body)
+
+    console.log('✅ Organization created:', newOrganization.id)
+    console.log('   Organization name:', newOrganization.name)
+    console.log('   City:', newOrganization.city)
+    
+    // Verify user was updated
+    const updatedUser = await getUserDocumentById(userId)
+    console.log('👤 User organization link after creation:', updatedUser?.organizationId?.toHexString())
+    console.log('   User organization name field:', (updatedUser as any)?.organization)
 
     return NextResponse.json(newOrganization, { status: 201 })
   } catch (error) {
+    console.error('❌ Organization creation error:', error)
     const isSyntaxError = error instanceof SyntaxError
     const status = isSyntaxError ? 400 : 500
     const message = isSyntaxError

@@ -5,6 +5,7 @@ import { cookies } from 'next/headers'
 import { ObjectId } from 'mongodb'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export const GET = async (_req: NextRequest) => {
   try {
@@ -20,7 +21,14 @@ export const GET = async (_req: NextRequest) => {
     }
 
     const requests = await listRequestsForUser(new ObjectId(userId))
-    return NextResponse.json(requests)
+    
+    const response = NextResponse.json(requests)
+    // Disable caching to ensure fresh data
+    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate')
+    response.headers.set('Pragma', 'no-cache')
+    response.headers.set('Expires', '0')
+    
+    return response
   } catch (error) {
     console.error('Error listing requests', error)
     const message = error instanceof Error ? error.message : 'Unable to list requests'
