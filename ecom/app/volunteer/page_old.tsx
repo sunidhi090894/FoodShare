@@ -145,7 +145,9 @@ const statusVariant: Record<TaskStatus, 'secondary' | 'default' | 'success' | 'w
   CANCELLED: 'destructive',
 }
 
-const latenessVariant: Record<'LOW' | 'MEDIUM' | 'HIGH', { label: string; variant: 'success' | 'warning' | 'destructive' }> = {
+type BadgeVariant = 'secondary' | 'default' | 'success' | 'warning' | 'destructive' | 'outline'
+
+const latenessVariant: Record<'LOW' | 'MEDIUM' | 'HIGH', { label: string; variant: BadgeVariant }> = {
   LOW: { label: 'Risk: Low', variant: 'success' },
   MEDIUM: { label: 'Risk: Medium', variant: 'warning' },
   HIGH: { label: 'Risk: High', variant: 'destructive' },
@@ -197,7 +199,8 @@ export default function VolunteerPortal() {
     setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, status } : task)))
   }
 
-  const handleAcceptTask = (taskId: string) => {
+  const handleAcceptTask = (taskId?: string) => {
+    if (!taskId) return
     updateTaskStatus(taskId, 'ACCEPTED')
   }
 
@@ -206,7 +209,8 @@ export default function VolunteerPortal() {
     setShowProfileForm(false)
   }
 
-  const openDeliveryForm = (taskId: string) => {
+  const openDeliveryForm = (taskId?: string) => {
+    if (!taskId) return
     setActiveTaskId(taskId)
     setDeliveryForms((prev) => ({
       ...prev,
@@ -222,9 +226,9 @@ export default function VolunteerPortal() {
       {
         id: `DEL-${Math.floor(Math.random() * 900 + 100)}`,
         donorOrg: task.donorOrg,
-        recipientOrg: task.recipientOrg,
+        recipientOrg: task.recipientOrg ?? 'Unknown Recipient',
         meals: 30,
-        distance: task.distance,
+        distance: task.distance ?? '0 km',
         completedOn: 'Today',
       },
       ...prev,
@@ -250,7 +254,9 @@ export default function VolunteerPortal() {
         openDeliveryForm(task.id)
         break
       case 'ON_ROUTE':
-        updateTaskStatus(task.id, 'PICKED_UP')
+        if (task.id) {
+          updateTaskStatus(task.id, 'PICKED_UP')
+        }
         break
       case 'PICKED_UP':
         openDeliveryForm(task.id)
@@ -259,7 +265,9 @@ export default function VolunteerPortal() {
   }
 
   const renderTaskCard = (task: PickupTask, highlight: boolean) => {
-    const riskView = latenessVariant[task.latenessRisk]
+    const riskView: { label: string; variant: BadgeVariant } = task.latenessRisk
+      ? latenessVariant[task.latenessRisk]
+      : { label: 'Risk: Unknown', variant: 'secondary' }
     const [showDetails, setShowDetails] = useState(false)
     
     return (
@@ -296,9 +304,13 @@ export default function VolunteerPortal() {
           <span>•</span>
           <span>{task.distance}</span>
           <span>•</span>
-          <span>
-            ETA {task.etaRange[0]} – {task.etaRange[1]} mins
-          </span>
+          {task.etaRange ? (
+            <span>
+              ETA {task.etaRange[0]} – {task.etaRange[1]} mins
+            </span>
+          ) : (
+            <span>ETA unknown</span>
+          )}
           {task.notes && (
             <>
               <span>•</span>
@@ -308,7 +320,7 @@ export default function VolunteerPortal() {
         </div>
         <div className="flex flex-wrap items-center gap-3">
           {highlight && (
-            <Badge variant="secondary">Fit score {Math.round(task.fitScore * 100)}%</Badge>
+            <Badge variant="secondary">Fit score {Math.round((task.fitScore ?? 0) * 100)}%</Badge>
           )}
           <Badge variant={riskView.variant}>{riskView.label}</Badge>
         </div>
@@ -330,7 +342,7 @@ export default function VolunteerPortal() {
             </div>
             <div>
               <p className="text-sm font-semibold text-[#4a1f1f]">Match Score</p>
-              <p className="text-sm text-[#6b4d3c]">{Math.round(task.fitScore * 100)}% compatible with your profile</p>
+              <p className="text-sm text-[#6b4d3c]">{Math.round((task.fitScore ?? 0) * 100)}% compatible with your profile</p>
             </div>
           </Card>
         )}
