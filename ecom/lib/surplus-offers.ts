@@ -40,6 +40,8 @@ export interface SurplusOfferDocument {
   pickupWindowStart: Date
   pickupWindowEnd: Date
   pickupAddress: string
+  donorCity?: string
+  donorOrgName?: string
   geoLocation?: {
     latitude: number
     longitude: number
@@ -54,6 +56,8 @@ export interface SurplusOfferResponse extends Omit<SurplusOfferDocument, '_id' |
   id: string
   organizationId: string
   createdByUserId: string
+  donorCity?: string
+  donorOrgName?: string
   organization?: ReturnType<typeof mapOrganization>
 }
 
@@ -139,6 +143,8 @@ export async function createSurplusOffer(
     pickupWindowStart: toDate(payload.pickupWindowStart, 'pickupWindowStart'),
     pickupWindowEnd: toDate(payload.pickupWindowEnd, 'pickupWindowEnd'),
     pickupAddress: payload.pickupAddress || organization.address,
+    donorCity: organization.city,
+    donorOrgName: organization.name,
     geoLocation: normalizeGeoLocation(payload.geoLocation) ?? normalizeGeoLocation(organization.geoLocation) ?? null,
     status: payload.status && SURPLUS_STATUSES.includes(payload.status) ? payload.status : 'OPEN',
     expiryDateTime: payload.expiryDateTime ? toDate(payload.expiryDateTime, 'expiryDateTime') : defaultExpiry,

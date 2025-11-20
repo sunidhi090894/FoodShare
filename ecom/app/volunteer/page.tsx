@@ -1,320 +1,281 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import {
-  MapPin,
-  Route,
   ClipboardCheck,
   CheckCircle2,
-  Clock,
   Phone,
-  NotebookPen,
   Award,
   Calendar,
+  Leaf,
+  X,
+  AlertCircle,
 } from 'lucide-react'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 
-type TaskStatus = 'ASSIGNED' | 'ACCEPTED' | 'ON_ROUTE' | 'PICKED_UP' | 'DELIVERED' | 'CANCELLED'
+interface VolunteerProfile {
+  name: string
+  city: string
+  vehicleType: string
+  age: string
+}
 
-interface PickupTask {
-  id: string
+interface Assignment {
+  _id: string
+  surplusId: string
   donorOrg: string
+  donorCity: string
   donorAddress: string
   donorContact: string
-  recipientOrg: string
-  recipientAddress: string
-  recipientContact: string
   items: string
   pickupWindow: string
-  status: TaskStatus
-  notes?: string
-  distance: string
-  fitScore: number
-  etaRange: [number, number]
-  latenessRisk: 'LOW' | 'MEDIUM' | 'HIGH'
+  status: 'ASSIGNED' | 'ACCEPTED' | 'COMPLETED' | 'REJECTED'
+  volunteerId?: string
+  acceptedAt?: string
+  completedAt?: string
+  createdAt: string
 }
 
-interface TaskHistory {
-  id: string
-  donorOrg: string
-  recipientOrg: string
-  meals: number
-  distance: string
-  completedOn: string
-}
-
-const initialTasks: PickupTask[] = [
-  {
-    id: 'TASK-4821',
-    donorOrg: 'Spice Route Café',
-    donorAddress: 'Bandra West · 4th Road',
-    donorContact: '+91 90220 11100',
-    recipientOrg: 'Hope Shelter Trust',
-    recipientAddress: 'Bandra East · Pipeline Rd',
-    recipientContact: '+91 90000 22211',
-    items: 'Biryani trays (30 plates)',
-    pickupWindow: 'Today · 2:00 – 4:00 PM',
-    status: 'ASSIGNED',
-    notes: 'Bring insulated carrier',
-    distance: '5.2 km',
-    fitScore: 0.88,
-    etaRange: [28, 36],
-    latenessRisk: 'LOW',
-  },
-  {
-    id: 'TASK-4809',
-    donorOrg: 'Fresh Bowl Kitchen',
-    donorAddress: 'Mahim · Reclamation',
-    donorContact: '+91 93300 88110',
-    recipientOrg: 'Care Foundation',
-    recipientAddress: 'Worli · Seaface',
-    recipientContact: '+91 98880 44111',
-    items: 'Salad bowls (20 servings)',
-    pickupWindow: 'Today · 7:00 – 8:30 PM',
-    status: 'ACCEPTED',
-    notes: 'Keep refrigerated',
-    distance: '7.4 km',
-    fitScore: 0.74,
-    etaRange: [35, 45],
-    latenessRisk: 'MEDIUM',
-  },
-  {
-    id: 'TASK-4801',
-    donorOrg: 'Sunrise Bakery',
-    donorAddress: 'Worli · Main Rd',
-    donorContact: '+91 95555 33100',
-    recipientOrg: 'Community Pantry',
-    recipientAddress: 'Lower Parel · Station Rd',
-    recipientContact: '+91 96660 10220',
-    items: 'Pastries + breads (25 packs)',
-    pickupWindow: 'Tomorrow · 9:30 – 11:00 AM',
-    status: 'PICKED_UP',
-    notes: 'Deliver before noon',
-    distance: '3.1 km',
-    fitScore: 0.63,
-    etaRange: [22, 30],
-    latenessRisk: 'LOW',
-  },
-]
-
-const initialHistory: TaskHistory[] = [
-  {
-    id: 'DEL-144',
-    donorOrg: 'Urban Feast',
-    recipientOrg: 'Shelter One',
-    meals: 40,
-    distance: '8.4 km',
-    completedOn: 'Oct 7',
-  },
-  {
-    id: 'DEL-141',
-    donorOrg: 'BKC Bistro',
-    recipientOrg: 'Night Shelter Network',
-    meals: 32,
-    distance: '11.2 km',
-    completedOn: 'Oct 2',
-  },
-]
-
-const statusVariant: Record<TaskStatus, 'secondary' | 'default' | 'success' | 'warning' | 'destructive'> = {
+const statusVariant: Record<string, 'secondary' | 'default' | 'success' | 'warning' | 'destructive'> = {
   ASSIGNED: 'secondary',
   ACCEPTED: 'default',
-  ON_ROUTE: 'warning',
-  PICKED_UP: 'default',
-  DELIVERED: 'success',
-  CANCELLED: 'destructive',
-}
-
-const latenessVariant: Record<'LOW' | 'MEDIUM' | 'HIGH', { label: string; variant: 'success' | 'warning' | 'destructive' }> = {
-  LOW: { label: 'Risk: Low', variant: 'success' },
-  MEDIUM: { label: 'Risk: Medium', variant: 'warning' },
-  HIGH: { label: 'Risk: High', variant: 'destructive' },
+  COMPLETED: 'success',
+  REJECTED: 'destructive',
 }
 
 export default function VolunteerPortal() {
   useProtectedRoute('VOLUNTEER')
-  const [tasks, setTasks] = useState(initialTasks)
-  const [history, setHistory] = useState(initialHistory)
-  const [deliveryForms, setDeliveryForms] = useState<
-    Record<string, { weight: string; contact: string; notes: string }>
-  >({})
-  const [activeTaskId, setActiveTaskId] = useState<string | null>(null)
 
-  const assignedTasks = tasks.filter((task) => task.status !== 'DELIVERED' && task.status !== 'CANCELLED')
-  const completedCount = history.length + tasks.filter((task) => task.status === 'DELIVERED').length
-  const suggestedTasks = assignedTasks.filter((task) => task.fitScore >= 0.8)
-  const otherAssignedTasks = assignedTasks.filter((task) => task.fitScore < 0.8)
+  // Volunteer Profile State
+  const [volunteerProfile, setVolunteerProfile] = useState<VolunteerProfile>({
+    name: 'Anita Sharma',
+    city: 'Mumbai',
+    vehicleType: 'Two-wheeler',
+    age: '28',
+  })
+  const [profileFormData, setProfileFormData] = useState<VolunteerProfile>(volunteerProfile)
+  const [showProfileForm, setShowProfileForm] = useState(false)
+
+  // Assignments State
+  const [assignments, setAssignments] = useState<Assignment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  // Load assignments from API
+  useEffect(() => {
+    const fetchAssignments = async () => {
+      try {
+        setLoading(true)
+        const res = await fetch(
+          `/api/volunteer-assignments?volunteerCity=${volunteerProfile.city}`
+        )
+        if (!res.ok) throw new Error('Failed to fetch assignments')
+        const data = await res.json()
+        setAssignments(data)
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load assignments')
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchAssignments()
+  }, [volunteerProfile.city])
+
+  // Calculate metrics
+  const acceptedTasksToday = assignments.filter((a) => a.status === 'ACCEPTED').length
+  const completedTasks = assignments.filter((a) => a.status === 'COMPLETED').length
+  const assignedTasks = assignments.filter((a) => a.status === 'ASSIGNED')
+  const acceptedTasks = assignments.filter((a) => a.status === 'ACCEPTED')
+  const completedTasksList = assignments.filter((a) => a.status === 'COMPLETED')
 
   const summaryCards = useMemo(
     () => [
       {
-        label: 'Tasks Assigned Today',
-        value: assignedTasks.length.toString(),
-        helper: 'Across Mumbai South',
+        label: 'Tasks Accepted Today',
+        value: acceptedTasksToday.toString(),
+        helper: 'Tasks you accepted',
         icon: ClipboardCheck,
       },
       {
         label: 'Tasks Completed',
-        value: completedCount.toString(),
+        value: completedTasks.toString(),
         helper: 'All-time deliveries',
         icon: CheckCircle2,
       },
-      {
-        label: 'Total Distance',
-        value: '24 km',
-        helper: 'Estimated today',
-        icon: Route,
-      },
-      {
-        label: 'Hours Volunteered',
-        value: '112',
-        helper: 'Tracked this year',
-        icon: Clock,
-      },
     ],
-    [assignedTasks.length, completedCount]
+    [acceptedTasksToday, completedTasks]
   )
 
-  const updateTaskStatus = (taskId: string, status: TaskStatus) => {
-    setTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, status } : task)))
-  }
+  const handleAcceptTask = async (assignmentId: string) => {
+    try {
+      const res = await fetch('/api/volunteer-assignments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignmentId,
+          status: 'ACCEPTED',
+          volunteerId: 'current-volunteer-id',
+        }),
+      })
 
-  const openDeliveryForm = (taskId: string) => {
-    setActiveTaskId(taskId)
-    setDeliveryForms((prev) => ({
-      ...prev,
-      [taskId]: prev[taskId] ?? { weight: '', contact: '', notes: '' },
-    }))
-  }
+      if (!res.ok) throw new Error('Failed to accept task')
 
-  const completeDelivery = (taskId: string) => {
-    const task = tasks.find((row) => row.id === taskId)
-    if (!task) return
-    updateTaskStatus(taskId, 'DELIVERED')
-    setHistory((prev) => [
-      {
-        id: `DEL-${Math.floor(Math.random() * 900 + 100)}`,
-        donorOrg: task.donorOrg,
-        recipientOrg: task.recipientOrg,
-        meals: 30,
-        distance: task.distance,
-        completedOn: 'Today',
-      },
-      ...prev,
-    ])
-    setActiveTaskId(null)
-  }
-
-  const nextActionLabel: Record<TaskStatus, string | null> = {
-    ASSIGNED: 'Accept Task',
-    ACCEPTED: 'Start / On Route',
-    ON_ROUTE: 'Mark Picked Up',
-    PICKED_UP: 'Mark Delivered',
-    DELIVERED: null,
-    CANCELLED: null,
-  }
-
-  const handleNextAction = (task: PickupTask) => {
-    switch (task.status) {
-      case 'ASSIGNED':
-        updateTaskStatus(task.id, 'ACCEPTED')
-        break
-      case 'ACCEPTED':
-        updateTaskStatus(task.id, 'ON_ROUTE')
-        break
-      case 'ON_ROUTE':
-        updateTaskStatus(task.id, 'PICKED_UP')
-        break
-      case 'PICKED_UP':
-        openDeliveryForm(task.id)
-        break
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a._id === assignmentId
+            ? { ...a, status: 'ACCEPTED', acceptedAt: new Date().toISOString() }
+            : a
+        )
+      )
+      
+      // Show success message
+      alert('Task accepted! Check "Accepted Tasks" tab.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to accept task')
     }
   }
 
-  const renderTaskCard = (task: PickupTask, highlight: boolean) => {
-    const riskView = latenessVariant[task.latenessRisk]
-    return (
-      <>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">{task.id}</p>
-            <h3 className="text-lg font-semibold text-[#4a1f1f]">{task.items}</h3>
-          </div>
-          <Badge variant={statusVariant[task.status]}>{task.status}</Badge>
-        </div>
-        <div className="grid md:grid-cols-2 gap-4 text-sm">
-          <div className="space-y-1">
-            <p className="font-semibold text-[#4a1f1f]">Donor</p>
-            <p className="text-[#6b4d3c]">{task.donorOrg}</p>
-            <p className="text-[#6b4d3c]">{task.donorAddress}</p>
-            <p className="text-[#6b4d3c] flex items-center gap-2">
-              <Phone className="w-4 h-4" />
-              {task.donorContact}
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="font-semibold text-[#4a1f1f]">Recipient</p>
-            <p className="text-[#6b4d3c]">{task.recipientOrg}</p>
-            <p className="text-[#6b4d3c]">{task.recipientAddress}</p>
-            <p className="text-[#6b4d3c] flex items-center gap-2">
-              <Phone className="w-4 h-4" />
-              {task.recipientContact}
-            </p>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-3 text-sm text-[#6b4d3c]">
-          <span>{task.pickupWindow}</span>
-          <span>•</span>
-          <span>{task.distance}</span>
-          <span>•</span>
-          <span>
-            ETA {task.etaRange[0]} – {task.etaRange[1]} mins
-          </span>
-          {task.notes && (
-            <>
-              <span>•</span>
-              <span>{task.notes}</span>
-            </>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {highlight && (
-            <Badge variant="secondary">Fit score {Math.round(task.fitScore * 100)}%</Badge>
-          )}
-          <Badge variant={riskView.variant}>{riskView.label}</Badge>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          {nextActionLabel[task.status] && (
-            <Button className="bg-[#8c3b3c] hover:bg-[#732f30]" onClick={() => handleNextAction(task)}>
-              {nextActionLabel[task.status]}
-            </Button>
-          )}
-          <Button variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-            View Details
-          </Button>
-        </div>
-      </>
-    )
+  const handleRejectTask = async (assignmentId: string) => {
+    try {
+      const res = await fetch('/api/volunteer-assignments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignmentId,
+          status: 'REJECTED',
+        }),
+      })
+
+      if (!res.ok) throw new Error('Failed to reject task')
+
+      setAssignments((prev) => prev.filter((a) => a._id !== assignmentId))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reject task')
+    }
   }
+
+  const handleCompleteDelivery = async (assignmentId: string) => {
+    try {
+      const res = await fetch('/api/volunteer-assignments', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          assignmentId,
+          status: 'COMPLETED',
+        }),
+      })
+
+      if (!res.ok) throw new Error('Failed to complete delivery')
+
+      setAssignments((prev) =>
+        prev.map((a) =>
+          a._id === assignmentId
+            ? { ...a, status: 'COMPLETED', completedAt: new Date().toISOString() }
+            : a
+        )
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to complete delivery')
+    }
+  }
+
+  const handleSaveProfile = () => {
+    setVolunteerProfile(profileFormData)
+    setShowProfileForm(false)
+  }
+
+  const renderTaskCard = (assignment: Assignment, isAssigned: boolean) => (
+    <Card key={assignment._id} className="border border-[#d9c7aa] bg-[#fffdf9] p-5 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">{assignment.surplusId}</p>
+          <h3 className="text-lg font-semibold text-[#4a1f1f]">{assignment.items}</h3>
+        </div>
+        <Badge variant={statusVariant[assignment.status]}>{assignment.status}</Badge>
+      </div>
+
+      <div className="space-y-1">
+        <p className="font-semibold text-[#4a1f1f]">Donor Organization</p>
+        <p className="text-[#6b4d3c]">{assignment.donorOrg}</p>
+        <p className="text-[#6b4d3c]">{assignment.donorAddress}</p>
+        <p className="text-[#6b4d3c] flex items-center gap-2">
+          <Phone className="w-4 h-4" />
+          {assignment.donorContact}
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-3 text-sm text-[#6b4d3c]">
+        <span className="flex items-center gap-1">
+          <Calendar className="w-4 h-4" />
+          {assignment.pickupWindow}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        {isAssigned && (
+          <>
+            <Button
+              className="bg-[#8c3b3c] hover:bg-[#732f30]"
+              onClick={() => handleAcceptTask(assignment._id)}
+            >
+              Accept Task
+            </Button>
+            <Button
+              variant="outline"
+              className="border-red-600 text-red-600 hover:bg-red-50"
+              onClick={() => handleRejectTask(assignment._id)}
+            >
+              Reject
+            </Button>
+          </>
+        )}
+        {!isAssigned && assignment.status === 'ACCEPTED' && (
+          <Button
+            className="bg-green-600 hover:bg-green-700"
+            onClick={() => handleCompleteDelivery(assignment._id)}
+          >
+            Mark Delivered
+          </Button>
+        )}
+      </div>
+    </Card>
+  )
 
   return (
     <div className="min-h-screen bg-[#f7f1e3] py-10 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
-        <header className="space-y-3">
-          <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Volunteer Dashboard</p>
-          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3 text-[#4a1f1f]">
-            <MapPin className="w-7 h-7 text-[#8c3b3c]" />
-            See your pickups, update statuses, and deliver meals
-          </h1>
-          <p className="text-[#6b4d3c] max-w-3xl">
-            Accept tasks, follow the step-by-step flow, and submit delivery confirmations to keep donors and recipients in sync.
-          </p>
+        <header className="space-y-2">
+          <div className="flex items-start gap-3">
+            <Leaf className="w-8 h-8 text-[#8c3b3c] shrink-0 mt-1" />
+            <div className="text-center flex-1">
+              <h1 className="text-4xl md:text-5xl font-bold text-[#4a1f1f]">
+                Volunteer Dashboard
+              </h1>
+            </div>
+          </div>
+          <div className="text-center">
+            <h2 className="text-lg md:text-xl text-[#4a1f1f]">
+              Accept tasks, complete deliveries, and track your impact
+            </h2>
+            <p className="text-[#6b4d3c] max-w-3xl mx-auto mt-2">
+              Tasks are matched to your city. Accept offers and mark them as delivered when complete.
+            </p>
+          </div>
         </header>
 
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {error && (
+          <Card className="p-4 border border-red-200 bg-red-50 flex items-center gap-3 text-sm text-red-700">
+            <AlertCircle className="w-5 h-5 shrink-0" />
+            <span>{error}</span>
+          </Card>
+        )}
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-2">
           {summaryCards.map((card) => {
             const Icon = card.icon
             return (
@@ -330,113 +291,225 @@ export default function VolunteerPortal() {
           })}
         </div>
 
-        <Card className="p-5 border border-[#d9c7aa] bg-[#fffdf9] space-y-1">
-          <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">Smart assignment</p>
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <p className="text-xl font-semibold text-[#4a1f1f]">
-              {suggestedTasks.length} task{suggestedTasks.length === 1 ? '' : 's'} match your availability today
-            </p>
-            <p className="text-sm text-[#6b4d3c]">
-              Based on preferred routes, past completions, and current location radius.
-            </p>
-          </div>
-        </Card>
-
+        {/* Assigned to Me Tab */}
         <Card className="p-6 border border-[#d9c7aa] bg-white space-y-5">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
             <div>
               <h2 className="text-xl font-semibold text-[#4a1f1f]">Assigned to Me</h2>
-              <p className="text-sm text-[#6b4d3c]">Tap the next step as you move through each task.</p>
+              <p className="text-sm text-[#6b4d3c]">Tasks waiting for your action.</p>
             </div>
-            <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-              Refresh tasks
-            </Button>
           </div>
 
-          {suggestedTasks.length > 0 && (
+          {loading ? (
+            <p className="text-center text-[#6b4d3c] py-8">Loading tasks...</p>
+          ) : assignedTasks.length === 0 ? (
+            <p className="text-center text-[#6b4d3c] py-8">No tasks assigned yet.</p>
+          ) : (
             <div className="space-y-4">
-              <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Suggested for you</p>
-              {suggestedTasks.map((task) => (
-                <Card key={task.id} className="border border-[#d9c7aa] bg-[#fffdf9] p-5 space-y-4">
-                  {renderTaskCard(task, true)}
+              {assignedTasks.map((assignment) => renderTaskCard(assignment, true))}
+            </div>
+          )}
+        </Card>
+
+        {/* Accepted Tasks Tab */}
+        {acceptedTasks.length > 0 && (
+          <Card className="p-6 border border-[#d9c7aa] bg-white space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#4a1f1f]">Accepted Tasks</h2>
+                <p className="text-sm text-[#6b4d3c]">Tasks you've accepted. Mark as delivered when done.</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {acceptedTasks.map((assignment) => renderTaskCard(assignment, false))}
+            </div>
+          </Card>
+        )}
+
+        {/* Completed Tasks Tab */}
+        {completedTasksList.length > 0 && (
+          <Card className="p-6 border border-[#d9c7aa] bg-white space-y-5">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#4a1f1f]">Tasks Completed</h2>
+                <p className="text-sm text-[#6b4d3c]">All-time task completions ({completedTasksList.length} total)</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {completedTasksList.map((assignment) => (
+                <Card key={assignment._id} className="border border-[#d9c7aa] bg-[#f9f5f0] p-5 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">{assignment.surplusId}</p>
+                      <h3 className="text-lg font-semibold text-[#4a1f1f]">{assignment.items}</h3>
+                    </div>
+                    <Badge variant="success">COMPLETED</Badge>
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="font-semibold text-[#4a1f1f]">Donor Organization</p>
+                    <p className="text-[#6b4d3c]">{assignment.donorOrg}</p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-3 text-sm text-[#6b4d3c]">
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-4 h-4" />
+                      {assignment.completedAt ? new Date(assignment.completedAt).toLocaleString() : 'Date not available'}
+                    </span>
+                  </div>
                 </Card>
               ))}
             </div>
-          )}
+          </Card>
+        )}
 
-          <div className="space-y-4">
-            {otherAssignedTasks.map((task) => (
-              <Card key={task.id} className="border border-[#d9c7aa] bg-white p-5 space-y-4">
-                {renderTaskCard(task, false)}
-              </Card>
-            ))}
+        {/* Volunteer Profile */}
+        <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-[#4a1f1f]">Volunteer Profile</h2>
+              <p className="text-sm text-[#6b4d3c]">Your details help us match you with the right deliveries.</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+              onClick={() => setShowProfileForm(true)}
+            >
+              Edit Profile
+            </Button>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1">
+              <p className="text-sm text-[#6b4d3c]">Name</p>
+              <p className="text-lg font-semibold text-[#4a1f1f]">{volunteerProfile.name}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-[#6b4d3c]">City</p>
+              <p className="text-lg font-semibold text-[#4a1f1f]">{volunteerProfile.city}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-[#6b4d3c]">Vehicle Type</p>
+              <p className="font-medium text-[#4a1f1f]">{volunteerProfile.vehicleType}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm text-[#6b4d3c]">Age</p>
+              <p className="font-medium text-[#4a1f1f]">{volunteerProfile.age} years</p>
+            </div>
           </div>
         </Card>
 
-        {activeTaskId && (
-          <>
-            <Card className="p-6 border border-[#d9c7aa] bg-white space-y-5">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-[#4a1f1f]">History & Achievements</h2>
-                  <p className="text-sm text-[#6b4d3c]">
-                    Every delivery counts toward your volunteer milestones.
-                  </p>
+        {/* Volunteer Profile Form Modal */}
+        {showProfileForm && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md border border-[#d9c7aa] bg-white">
+              <div className="p-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-semibold text-[#4a1f1f]">Edit Profile</h2>
+                  <button
+                    onClick={() => setShowProfileForm(false)}
+                    className="text-[#6b4d3c] hover:text-[#4a1f1f]"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
-                <Award className="w-5 h-5 text-[#8c3b3c]" />
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {history.slice(0, 4).map((record) => (
-                  <Card key={record.id} className="border border-[#d9c7aa] bg-[#fffdf9] p-4 space-y-2">
-                    <p className="text-xs uppercase tracking-wide text-[#8c3b3c]">{record.completedOn}</p>
-                    <h3 className="text-lg font-semibold text-[#4a1f1f]">
-                      {record.donorOrg} → {record.recipientOrg}
-                    </h3>
-                    <p className="text-sm text-[#6b4d3c]">
-                      {record.meals} meals • {record.distance}
-                    </p>
-                  </Card>
-                ))}
-              </div>
-            </Card>
 
-            <Card className="p-6 border border-[#d9c7aa] bg-white space-y-4">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-[#4a1f1f]">Profile & Availability</h2>
-                  <p className="text-sm text-[#6b4d3c]">
-                    Update your preferred service areas and time slots so coordinators can assign faster.
-                  </p>
-                </div>
-                <Button variant="outline" size="sm" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
-                  Edit availability
-                </Button>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1">
-                  <p className="text-sm text-[#6b4d3c]">Service area</p>
-                  <p className="text-lg font-semibold text-[#4a1f1f]">Bandra · Mahim · Worli</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-[#6b4d3c]">Contact info</p>
-                  <p className="font-medium text-[#4a1f1f]">Anita Sharma · +91 90009 11223</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-[#6b4d3c] flex items-center gap-2">
-                    <Calendar className="w-4 h-4" />
-                    Availability slots
-                  </p>
-                  <p className="font-medium text-[#4a1f1f]">Weekdays 1:00 – 9:00 PM • Saturdays 10:00 AM – 4:00 PM</p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-sm text-[#6b4d3c]">Equipment</p>
-                  <p className="font-medium text-[#4a1f1f]">Thermal bags · Cooler box</p>
-                </div>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault()
+                    handleSaveProfile()
+                  }}
+                  className="space-y-4"
+                >
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">
+                      Name
+                    </label>
+                    <Input
+                      type="text"
+                      value={profileFormData.name}
+                      onChange={(e) =>
+                        setProfileFormData({ ...profileFormData, name: e.target.value })
+                      }
+                      className="border-[#d9c7aa] bg-[#faf8f4]"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">
+                      City
+                    </label>
+                    <Input
+                      type="text"
+                      value={profileFormData.city}
+                      onChange={(e) =>
+                        setProfileFormData({ ...profileFormData, city: e.target.value })
+                      }
+                      className="border-[#d9c7aa] bg-[#faf8f4]"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">
+                      Vehicle Type
+                    </label>
+                    <select
+                      value={profileFormData.vehicleType}
+                      onChange={(e) =>
+                        setProfileFormData({ ...profileFormData, vehicleType: e.target.value })
+                      }
+                      className="w-full border border-[#d9c7aa] rounded px-3 py-2 bg-[#faf8f4]"
+                      required
+                    >
+                      <option value="">Select vehicle type</option>
+                      <option value="Two-wheeler">Two-wheeler</option>
+                      <option value="Three-wheeler">Three-wheeler</option>
+                      <option value="Car">Car</option>
+                      <option value="Bike">Bike</option>
+                      <option value="Bicycle">Bicycle</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-[#4a1f1f] mb-1">
+                      Age
+                    </label>
+                    <Input
+                      type="number"
+                      value={profileFormData.age}
+                      onChange={(e) =>
+                        setProfileFormData({ ...profileFormData, age: e.target.value })
+                      }
+                      className="border-[#d9c7aa] bg-[#faf8f4]"
+                      required
+                    />
+                  </div>
+
+                  <div className="flex gap-3 pt-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 border-[#d9c7aa] text-[#6b4d3c]"
+                      onClick={() => setShowProfileForm(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="flex-1 bg-[#8c3b3c] hover:bg-[#732f30] text-white"
+                    >
+                      Save Profile
+                    </Button>
+                  </div>
+                </form>
               </div>
             </Card>
-          </>
+          </div>
         )}
-
       </div>
     </div>
   )

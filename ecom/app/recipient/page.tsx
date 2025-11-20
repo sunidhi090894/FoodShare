@@ -13,11 +13,13 @@ import {
   MessageSquare,
   Building2,
   CheckCircle2,
+  Leaf,
 } from 'lucide-react'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { AaharSetuLogo } from '@/components/ui/logo'
 
 type DietTag = 'VEG' | 'NON_VEG' | 'VEGAN'
 type TimeFilter = 'NOW' | 'LATER' | 'TOMORROW'
@@ -73,6 +75,7 @@ export default function RecipientPortal() {
   const [feedbackDraft, setFeedbackDraft] = useState<Record<string, string>>({})
   const [showEditOrgModal, setShowEditOrgModal] = useState(false)
   const [showDetailsModal, setShowDetailsModal] = useState<SurplusOffer | null>(null)
+  const [showRequestDetailsModal, setShowRequestDetailsModal] = useState<RecipientRequest | null>(null)
   const [orgFormData, setOrgFormData] = useState({ name: '', address: '', city: '', contact: '' })
 
   const [surplusOffers, setSurplusOffers] = useState<SurplusOffer[]>([])
@@ -314,15 +317,23 @@ export default function RecipientPortal() {
   return (
     <div className="min-h-screen bg-[#f7f1e3] py-10 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
-        <header className="space-y-3">
-          <p className="text-sm uppercase tracking-wide text-[#8c3b3c]">Recipient Dashboard</p>
-          <h1 className="text-3xl md:text-4xl font-bold flex items-center gap-3 text-[#4a1f1f]">
-            <MapPin className="w-7 h-7 text-[#8c3b3c]" />
-            Discover surplus nearby and request it fast
-          </h1>
-          <p className="text-[#6b4d3c] max-w-3xl">
-            Browse available surplus, request what you need, and track deliveries.
-          </p>
+        <header className="space-y-2">
+          <div className="flex items-start gap-3">
+            <Leaf className="w-8 h-8 text-[#8c3b3c] shrink-0 mt-1" />
+            <div className="text-center flex-1">
+              <h1 className="text-4xl md:text-5xl font-bold text-[#4a1f1f]">
+                Recipient Dashboard
+              </h1>
+            </div>
+          </div>
+          <div className="text-center">
+            <h2 className="text-lg md:text-xl text-[#4a1f1f]">
+              Discover surplus nearby{userOrg?.name ? ` from ${userOrg.name}` : ''}
+            </h2>
+            <p className="text-[#6b4d3c] max-w-3xl mx-auto mt-2">
+              Browse available surplus, request what you need, and track your donations.
+            </p>
+          </div>
         </header>
 
         {error && (
@@ -481,7 +492,12 @@ export default function RecipientPortal() {
                               Cancel
                             </Button>
                           )}
-                          <Button size="sm" variant="outline" className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]">
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+                            onClick={() => setShowRequestDetailsModal(row)}
+                          >
                             View Details
                           </Button>
                         </div>
@@ -752,6 +768,69 @@ export default function RecipientPortal() {
                     Request Surplus
                   </Button>
                 </div>
+              </div>
+            </Card>
+          </div>
+        )}
+
+        {/* View Request Details Modal */}
+        {showRequestDetailsModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <Card className="w-full max-w-md border border-[#d9c7aa] bg-white">
+              <div className="p-6 space-y-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-[#4a1f1f]">Request Details</h2>
+                  <button
+                    onClick={() => setShowRequestDetailsModal(null)}
+                    className="absolute top-4 right-4 text-[#6b4d3c] hover:text-[#4a1f1f]"
+                  >
+                    ✕
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Donor Organization</p>
+                    <p className="text-lg font-semibold text-[#4a1f1f]">{showRequestDetailsModal.surplus?.organization?.name || 'Unknown'}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Items</p>
+                    <p className="text-sm text-[#4a1f1f]">
+                      {showRequestDetailsModal.surplus?.items.map((i) => `${i.quantity} ${i.unit} ${i.name}`).join(', ')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Pickup Address</p>
+                    <p className="text-sm text-[#4a1f1f]">{showRequestDetailsModal.surplus?.pickupAddress}</p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Pickup Window</p>
+                    <p className="text-sm text-[#4a1f1f]">
+                      {showRequestDetailsModal.surplus?.pickupWindowStart ? new Date(showRequestDetailsModal.surplus.pickupWindowStart).toLocaleString() : 'N/A'} - {showRequestDetailsModal.surplus?.pickupWindowEnd ? new Date(showRequestDetailsModal.surplus.pickupWindowEnd).toLocaleString() : 'N/A'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-[#6b4d3c] font-semibold">Request Status</p>
+                    <Badge 
+                      variant={
+                        showRequestDetailsModal.status === 'APPROVED'
+                          ? 'success'
+                          : showRequestDetailsModal.status === 'FULFILLED'
+                            ? 'default'
+                            : showRequestDetailsModal.status === 'REJECTED'
+                              ? 'destructive'
+                              : 'secondary'
+                      }
+                    >
+                      {showRequestDetailsModal.status}
+                    </Badge>
+                  </div>
+                </div>
+                <Button
+                  className="w-full bg-[#8c3b3c] hover:bg-[#732f30] text-white"
+                  onClick={() => setShowRequestDetailsModal(null)}
+                >
+                  Close
+                </Button>
               </div>
             </Card>
           </div>

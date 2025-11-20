@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
-  Leaf,
   Package,
   Utensils,
   Recycle,
@@ -14,12 +13,14 @@ import {
   X,
   Plus,
   Download,
+  Leaf,
 } from 'lucide-react'
 import { useProtectedRoute } from '@/hooks/use-protected-route'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { AaharSetuLogo } from '@/components/ui/logo'
 
 type OfferStatus = 'OPEN' | 'MATCHED' | 'FULFILLED' | 'EXPIRED' | 'CANCELLED'
 
@@ -74,6 +75,7 @@ export default function DonorPage() {
   const router = useRouter()
   
   const [user, setUser] = useState<BackendUser | null>(null)
+  const [organization, setOrganization] = useState<{ city: string; name: string } | null>(null)
   const [fetchError, setFetchError] = useState('')
   const [loading, setLoading] = useState(true)
   const [offers, setOffers] = useState<ActiveOffer[]>([])
@@ -118,6 +120,7 @@ export default function DonorPage() {
             const orgRes = await fetch(`/api/organizations/${data.organizationId}`)
             if (orgRes.ok) {
               const orgData = await orgRes.json()
+              setOrganization({ city: orgData.city, name: orgData.name })
               setPickupAddress(`${orgData.address}, ${orgData.city}`)
             }
           } catch (error) {
@@ -338,6 +341,35 @@ export default function DonorPage() {
         throw new Error(data.error || 'Failed to approve request')
       }
 
+      // When request is approved, change offer status to MATCHED and send to volunteer assignments
+      if (selectedOffer && organization) {
+        try {
+          // First update the surplus offer status to MATCHED
+          await fetch(`/api/surplus/${selectedOffer.id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'MATCHED' }),
+          })
+
+          // Then create volunteer assignment with city information
+          await fetch('/api/volunteer-assignments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              surplusId: selectedOffer.id,
+              donorOrg: organization.name,
+              donorCity: organization.city,
+              donorAddress: selectedOffer.pickupAddress,
+              donorContact: user?.email || 'N/A',
+              items: selectedOffer.items.map(i => `${i.quantity} ${i.unit} ${i.name}`).join(', '),
+              pickupWindow: `${new Date(selectedOffer.pickupWindowStart).toLocaleString()} - ${new Date(selectedOffer.pickupWindowEnd).toLocaleString()}`,
+            }),
+          })
+        } catch (err) {
+          console.error('Failed to create volunteer assignment:', err)
+        }
+      }
+
       // Reload requests
       if (selectedOffer) {
         await handleViewRequests(selectedOffer)
@@ -544,7 +576,7 @@ export default function DonorPage() {
     <div className="min-h-screen bg-[#f7f1e3] py-10 px-4">
       <div className="max-w-7xl mx-auto space-y-8">
         <header className="space-y-2">
-          <div className="flex items-start gap-3">
+          <div className="flex items-start gap-2">
             <Leaf className="w-8 h-8 text-[#8c3b3c] shrink-0 mt-1" />
             <div className="text-center flex-1">
               <h1 className="text-4xl md:text-5xl font-bold text-[#4a1f1f]">
@@ -789,33 +821,40 @@ export default function DonorPage() {
                         <Badge variant={offerStatusVariant[offer.status]}>{offer.status}</Badge>
                       </td>
                       <td className="py-4">
-                        <div className="flex flex-wrap gap-2">
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
-                            onClick={() => handleViewRequests(offer)}
-                          >
-                            View Requests
-                          </Button>
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
-                            onClick={() => handleEditOffer(offer)}
-                          >
-                            Edit
-                          </Button>
-                          {offer.status === 'OPEN' && (
+                        {offer.status === 'MATCHED' ? (
+                          <div className="space-y-2">
+                            <p className="text-sm font-semibold text-[#4a1f1f]">Accepted by:</p>
+                            <p className="text-sm text-[#6b4d3c]">{offer.recipientOrgName || 'Recipient Organization'}</p>
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
                             <Button 
-                              variant="destructive" 
-                              size="sm"
-                              onClick={() => handleCancelOffer(offer.id)}
+                              variant="outline" 
+                              size="sm" 
+                              className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+                              onClick={() => handleViewRequests(offer)}
                             >
-                              Cancel
+                              View Requests
                             </Button>
-                          )}
-                        </div>
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              className="border-[#8c3b3c] text-[#8c3b3c] hover:bg-[#f7ebe0]"
+                              onClick={() => handleEditOffer(offer)}
+                            >
+                              Edit
+                            </Button>
+                            {offer.status === 'OPEN' && (
+                              <Button 
+                                variant="destructive" 
+                                size="sm"
+                                onClick={() => handleCancelOffer(offer.id)}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
