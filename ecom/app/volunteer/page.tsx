@@ -85,10 +85,10 @@ export default function VolunteerPortal() {
 
     fetchAssignments()
     
-    // Auto-refresh every 5 seconds to show real-time updates
-    const interval = setInterval(fetchAssignments, 5000)
+    // Do NOT auto-refresh - only refresh on explicit user action
+    // Users can click the "Refresh" button to manually reload assignments
     
-    return () => clearInterval(interval)
+    return () => {}
   }, [volunteerProfile.city])
 
   // Calculate metrics

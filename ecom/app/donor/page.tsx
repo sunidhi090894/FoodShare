@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import type { LucideIcon } from 'lucide-react'
 import {
@@ -28,6 +28,7 @@ interface BackendUser {
   name: string | null
   organization?: string | null
   email?: string | null
+  role?: string
 }
 
 interface SurplusItem {
@@ -105,6 +106,26 @@ export default function DonorPage() {
   const [pickupWindowEnd, setPickupWindowEnd] = useState('')
   const [pickupAddress, setPickupAddress] = useState('')
 
+  const loadOffers = useCallback(async () => {
+    try {
+      const res = await fetch('/api/surplus/my')
+      if (!res.ok) {
+        const errorData = await res.json()
+        console.error('Failed to load offers:', errorData)
+        setFetchError(`Failed to load offers: ${errorData.error || 'Unknown error'}`)
+        setOffers([])
+        return
+      }
+      const data = await res.json()
+      console.log('Loaded offers:', data)
+      setOffers(Array.isArray(data) ? data : [])
+    } catch (error) {
+      console.error('Failed to load offers:', error)
+      setFetchError(error instanceof Error ? error.message : 'Failed to load offers')
+      setOffers([])
+    }
+  }, [])
+
   useEffect(() => {
     const loadProfile = async () => {
       try {
@@ -115,13 +136,20 @@ export default function DonorPage() {
         }
         const data = await res.json()
         console.log('📱 [DONOR] User profile loaded:', data)
+        console.log('   - User role:', data.role)
         console.log('   - User organization field:', data.organization)
         console.log('   - User organizationId field:', data.organizationId)
         
         // Verify user is a DONOR before setting state
         if (data.role !== 'DONOR') {
-          console.error('User is not a DONOR, redirecting...')
-          router.replace('/dashboard')
+          console.log('ℹ️ [DONOR] User role is:', data.role, '- redirecting to appropriate dashboard')
+          // Redirect to their appropriate dashboard based on role
+          const roleRoutes: Record<string, string> = {
+            'RECIPIENT': '/recipient',
+            'VOLUNTEER': '/volunteer',
+            'ADMIN': '/admin'
+          }
+          router.replace(roleRoutes[data.role] || '/dashboard')
           return
         }
         
@@ -162,31 +190,11 @@ export default function DonorPage() {
     }
     loadProfile()
     
-    // Auto-refresh offers every 5 seconds to show real-time updates
-    const interval = setInterval(loadOffers, 5000)
+    // Do NOT auto-refresh - only refresh on explicit user action
+    // Users can click the "Refresh" button to manually reload offers
     
-    return () => clearInterval(interval)
-  }, [])
-
-  const loadOffers = async () => {
-    try {
-      const res = await fetch('/api/surplus/my')
-      if (!res.ok) {
-        const errorData = await res.json()
-        console.error('Failed to load offers:', errorData)
-        setFetchError(`Failed to load offers: ${errorData.error || 'Unknown error'}`)
-        setOffers([])
-        return
-      }
-      const data = await res.json()
-      console.log('Loaded offers:', data)
-      setOffers(Array.isArray(data) ? data : [])
-    } catch (error) {
-      console.error('Failed to load offers:', error)
-      setFetchError(error instanceof Error ? error.message : 'Failed to load offers')
-      setOffers([])
-    }
-  }
+    return () => {}
+  }, [loadOffers])
 
   const handleAddItem = () => {
     setItems([...items, { name: '', quantity: 0, unit: 'kg', category: '', dietaryTags: [], allergenTags: [] }])
@@ -402,6 +410,7 @@ export default function DonorPage() {
     }
 
     try {
+      console.log('🎯 [DONOR] Approving request:', requestId)
       const res = await fetch(`/api/requests/${requestId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -410,9 +419,11 @@ export default function DonorPage() {
 
       if (!res.ok) {
         const data = await res.json()
+        console.error('❌ [DONOR] API Error approving request:', res.status, data)
         throw new Error(data.error || 'Failed to approve request')
       }
 
+      console.log('✅ [DONOR] Request approved successfully')
       // When request is approved, change offer status to MATCHED and send to volunteer assignments
       if (selectedOffer && organization) {
         try {

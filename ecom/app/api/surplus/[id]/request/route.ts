@@ -67,13 +67,17 @@ export const POST = async (
       return NextResponse.json({ error: 'Recipient organization not found' }, { status: 404 })
     }
 
+    // Check if recipient organization is in the same city as donor
+    const donorOrg = await getOrganizationById(surplus.organizationId)
+    if (donorOrg && donorOrg.city.toLowerCase() !== recipientOrg.city.toLowerCase()) {
+      console.log('📝 [REQUEST] ℹ️ Recipient city does not match donor city, but that is allowed. Recipient:', recipientOrg.city, 'Donor:', donorOrg.city)
+    }
+
     console.log('📝 [REQUEST] ✓ Creating surplus request')
     const request = await createSurplusRequest(surplus, recipientOrg, new ObjectId(userId))
 
-    // Update surplus status to MATCHED
-    console.log('📝 [REQUEST] ✓ Updating surplus status to MATCHED')
-    await updateSurplusOffer(surplus._id, { status: 'MATCHED' })
-    console.log('📝 [REQUEST] ✓ Surplus status updated to MATCHED')
+    // DO NOT change status to MATCHED here - only when donor approves
+    // Status changes to MATCHED only when donor accepts the request
 
     // Notify donor
     await createNotification({

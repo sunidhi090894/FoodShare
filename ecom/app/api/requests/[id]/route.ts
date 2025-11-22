@@ -17,14 +17,25 @@ export const PATCH = async (
   try {
     const cookieStore = await cookies()
     const userId = cookieStore.get('userId')?.value
+    console.log('📝 [PATCH /api/requests/:id] Called by user:', userId)
+    
     if (!userId) {
+      console.log('❌ [PATCH /api/requests/:id] No userId in cookie')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const user = await getUserDocumentById(userId)
-    if (!user || user.role !== 'DONOR') {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (!user) {
+      console.log('❌ [PATCH /api/requests/:id] User not found:', userId)
+      return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
+    
+    if (user.role !== 'DONOR') {
+      console.log('❌ [PATCH /api/requests/:id] User is not a DONOR. Role:', user.role)
+      return NextResponse.json({ error: `Forbidden: Only DONORS can approve requests. Your role is: ${user.role}` }, { status: 403 })
+    }
+    
+    console.log('✅ [PATCH /api/requests/:id] DONOR user authorized:', userId)
 
     const { id } = await context.params
 

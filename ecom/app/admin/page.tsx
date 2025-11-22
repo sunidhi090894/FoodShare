@@ -38,6 +38,7 @@ export default function AdminDataPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [totalMealsRescued, setTotalMealsRescued] = useState(0)
+  const [co2SavedThisMonth, setCo2SavedThisMonth] = useState(0)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -52,25 +53,46 @@ export default function AdminDataPage() {
         const userData = await usersRes.json()
         setUsers(userData)
 
-        // Calculate total meals rescued from all completed volunteer assignments
+        // Calculate total meals rescued from all completed volunteer assignments (all time)
         try {
           const response = await fetch('/api/volunteer-assignments')
           if (response.ok) {
             const assignments: VolunteerAssignment[] = await response.json()
-            // Count completed assignments and calculate meals
-            const meals = assignments
-              .filter(a => a.status === 'COMPLETED')
-              .reduce((total, assignment) => {
-                // Parse items string to extract quantities
-                // Example: "10 kg Biryani, 5 kg Rice"
-                const quantities = (assignment.items.match(/\d+/g) || []).map(Number)
-                const itemMeals = quantities.reduce((sum, qty) => sum + Math.round(qty * 2.2), 0)
-                return total + itemMeals
-              }, 0)
-            setTotalMealsRescued(meals)
+            // Count completed assignments (each completed task = 1 meal rescued)
+            // This counts ALL completed assignments ever (all time, not just this month)
+            const completedCount = assignments.filter(a => a.status === 'COMPLETED').length
+            setTotalMealsRescued(completedCount)
           }
         } catch (err) {
           console.error('Failed to fetch volunteer assignments:', err)
+        }
+
+        // Calculate CO₂ Saved This Month from donor organizations
+        try {
+          // Fetch all donor offers
+          const offersRes = await fetch('/api/surplus/available?limit=1000')
+          if (offersRes.ok) {
+            const offers: any[] = await offersRes.json()
+            const now = new Date()
+            const currentMonth = now.getMonth()
+            const currentYear = now.getFullYear()
+            
+            // Filter offers from this month and calculate CO₂ saved
+            const thisMonthCo2 = offers
+              .filter(offer => {
+                const offerDate = new Date(offer.createdAt)
+                return offerDate.getMonth() === currentMonth && offerDate.getFullYear() === currentYear
+              })
+              .reduce((total, offer) => {
+                // CO₂ saved = total weight * 1.8 kg CO₂ per kg food
+                const weight = offer.totalWeightKg || 0
+                return total + (weight * 1.8)
+              }, 0)
+            
+            setCo2SavedThisMonth(Math.round(thisMonthCo2))
+          }
+        } catch (err) {
+          console.error('Failed to fetch CO₂ data:', err)
         }
       } catch (err: any) {
         setError(err.message || 'Error loading data')
@@ -90,7 +112,7 @@ export default function AdminDataPage() {
     {
       label: 'Total Meals Rescued',
       value: totalMealsRescued.toLocaleString(),
-      helper: 'From all completed deliveries',
+      helper: 'Sum of completed volunteer tasks',
       icon: Utensils,
     },
     {
@@ -100,8 +122,8 @@ export default function AdminDataPage() {
       icon: Users,
     },
     {
-      label: 'CO₂ Saved Total',
-      value: `${Math.round(totalMealsRescued * 1.8 / 2.2)} kg`,
+      label: 'CO₂ Saved This Month',
+      value: `${co2SavedThisMonth.toLocaleString()} kg`,
       helper: '1 kg food = 1.8 kg CO₂ avoided',
       icon: Leaf,
     },
